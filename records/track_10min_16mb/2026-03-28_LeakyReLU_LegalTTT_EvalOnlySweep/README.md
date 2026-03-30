@@ -1,12 +1,15 @@
 # LeakyReLU² + 4ep Legal TTT + Parallel Muon
 
-**val_bpb: 1.11835341** (seed 2025) | **15,882,595 bytes** | 8xH100 SXM
+**val_bpb: 1.1189** (3-seed mean, std 0.0006; best 1.11835341) | **~15.88 MB** | 8xH100 SXM
 
-## Result
+## Results
 
-| Seed | step_avg | steps | Pre-TTT bpb | Post-TTT bpb | TTT gain | TTT time | Eval wall | Artifact |
-|------|----------|-------|-------------|--------------|----------|----------|-----------|----------|
-| 2025 | 83.7ms | 7,161 | 1.12103199 | **1.11835341** | -0.00267858 | 545.8s | 554s | 15,882,595 |
+| Seed | step_avg | steps | Post-EMA bpb | **Post-TTT bpb** | TTT time | Artifact |
+|------|----------|-------|--------------|------------------|----------|----------|
+| 1337 | 83.9ms | 7,000 | 1.1370 | **1.11903472** | 548.2s | 15,869,615 |
+| 42 | 84.0ms | 7,000 | 1.1374 | **1.11944510** | 541.6s | 15,866,975 |
+| 2025 | 83.8ms | 7,000 | 1.1362 | **1.11835341** | 545.4s | 15,882,595 |
+| **Mean** | **83.9ms** | **7,000** | **1.1369** | **1.1189 (std 0.0006)** | **~545s** | |
 
 ## What Changed
 
@@ -35,8 +38,8 @@ Backward-looking, score-first TTT following PR #461's framework:
 | Phase | Time |
 |-------|------|
 | Training | 600s |
-| Legal TTT eval | 545.8s |
-| Total eval wall time | 554s |
+| Legal TTT eval | 541.6s - 548.2s |
+| Total eval wall time | ~550s |
 
 ## Run Command
 
