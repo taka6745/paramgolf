@@ -89,6 +89,8 @@ def run_timed(label, schedule):
             optimizer.zero_grad()
             phase_steps += 1
             total_steps += 1
+            if total_steps % 200 == 0:
+                print(f"  [{label}] step {total_steps} loss={loss.item():.2f} elapsed={time.time()-t_start:.1f}s", flush=True)
         elapsed = time.time() - phase_start
         print(f"  [{label}] phase seq={seq} layers={n_active}: {phase_steps} steps in {elapsed:.1f}s ({phase_steps/elapsed:.0f} steps/s)", flush=True)
 
