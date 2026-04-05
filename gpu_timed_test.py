@@ -65,6 +65,16 @@ def run_timed(label, schedule):
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
     total_steps = 0
+
+    # Warmup (not counted in time)
+    print(f"  [{label}] warmup...", flush=True)
+    for _ in range(3):
+        x = torch.randint(0, vocab, (batch, 1024), device=device)
+        loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+        loss.backward(); optimizer.step(); optimizer.zero_grad()
+    torch.cuda.synchronize()
+    print(f"  [{label}] warmup done, starting timed run", flush=True)
+
     t_start = time.time()
 
     for frac, seq, n_active in schedule:
@@ -80,7 +90,7 @@ def run_timed(label, schedule):
             phase_steps += 1
             total_steps += 1
         elapsed = time.time() - phase_start
-        print(f"  [{label}] phase seq={seq} layers={n_active}: {phase_steps} steps in {elapsed:.1f}s ({phase_steps/elapsed:.0f} steps/s)")
+        print(f"  [{label}] phase seq={seq} layers={n_active}: {phase_steps} steps in {elapsed:.1f}s ({phase_steps/elapsed:.0f} steps/s)", flush=True)
 
     total_time = time.time() - t_start
     eval_loss = evaluate(model)
