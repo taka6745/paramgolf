@@ -135,6 +135,151 @@ print("\n--- 6. 60%@64 + 30%@128 + 10%@1024 ---")
 l, s = run_timed("3phase_short", [(0.6, 64, 11, None), (0.3, 128, 11, None), (0.1, 1024, 11, None)])
 results.append(("6. 60/30/10 @64→128→1024", l, s))
 
+# 7. Hybrid: conv layers for short phase, attention for long phase
+class ConvBlock(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.norm1 = torch.nn.LayerNorm(dim)
+        self.norm2 = torch.nn.LayerNorm(dim)
+        self.conv = torch.nn.Conv1d(dim, dim, 5, padding=4, groups=dim)
+        self.conv_proj = torch.nn.Linear(dim, dim)
+        self.fc1 = torch.nn.Linear(dim, dim * 2)
+        self.fc2 = torch.nn.Linear(dim * 2, dim)
+    def forward(self, x):
+        B, T, D = x.shape
+        h = self.norm1(x)
+        y = self.conv(h.transpose(1, 2))[:, :, :T].transpose(1, 2)
+        x = x + self.conv_proj(y)
+        h = self.norm2(x)
+        x = x + self.fc2(F.gelu(self.fc1(h)))
+        return x
+
+class HybridGPT(torch.nn.Module):
+    def __init__(self, n_conv=4, n_attn=7):
+        super().__init__()
+        self.embed = torch.nn.Embedding(vocab, dim)
+        blocks = [ConvBlock() for _ in range(n_conv)] + [Block() for _ in range(n_attn)]
+        self.blocks = torch.nn.ModuleList(blocks)
+        self.norm = torch.nn.LayerNorm(dim)
+        self.head = torch.nn.Linear(vocab, dim, bias=False)
+        self.head.weight = self.embed.weight
+    def forward(self, x, n_active=None):
+        h = self.embed(x)
+        for i in range(n_active or len(self.blocks)):
+            h = self.blocks[i](h)
+        return self.head(self.norm(h))
+
+print("\n--- 7. Hybrid 4conv+7attn: 90%@128 + 10%@1024 ---")
+model = HybridGPT(4, 7).to(device).bfloat16()
+model.train()
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+for _ in range(3):
+    x = torch.randint(0, vocab, (batch, 1024), device=device)
+    loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+    loss.backward(); optimizer.step(); optimizer.zero_grad()
+total_steps = 0; t_start = time.time()
+for frac, seq in [(0.9, 128), (0.1, 1024)]:
+    phase_start = time.time()
+    phase_steps = 0
+    while (time.time() - phase_start) < frac * TIME_BUDGET:
+        x = torch.randint(0, vocab, (batch, seq), device=device)
+        loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+        loss.backward(); optimizer.step(); optimizer.zero_grad()
+        phase_steps += 1; total_steps += 1
+        if total_steps % 500 == 0:
+            print(f"  [hybrid] step {total_steps} loss={loss.item():.2f} elapsed={time.time()-t_start:.1f}s", flush=True)
+    print(f"  [hybrid] phase seq={seq}: {phase_steps} steps in {time.time()-phase_start:.1f}s", flush=True)
+model.eval()
+eval_losses = []
+with torch.no_grad():
+    for _ in range(20):
+        x = torch.randint(0, vocab, (batch, 1024), device=device)
+        eval_losses.append(F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1)).item())
+eval_loss = sum(eval_losses)/len(eval_losses)
+print(f"  [hybrid] TOTAL: {total_steps} steps, eval_loss={eval_loss:.4f}", flush=True)
+results.append(("7. Hybrid 4conv+7attn 90/10", eval_loss, total_steps))
+del model, optimizer; torch.cuda.empty_cache()
+
+# 8. Wider model during short phase (more params same speed at seq=128)
+print("\n--- 8. 90%@128 batch=16 + 10%@1024 batch=8 (bigger batch when cheap) ---")
+model = GPT(11).to(device).bfloat16()
+model.train()
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+for _ in range(3):
+    x = torch.randint(0, vocab, (batch, 1024), device=device)
+    loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+    loss.backward(); optimizer.step(); optimizer.zero_grad()
+total_steps = 0; t_start = time.time()
+for frac, seq, bs in [(0.9, 128, 16), (0.1, 1024, 8)]:
+    phase_start = time.time()
+    phase_steps = 0
+    while (time.time() - phase_start) < frac * TIME_BUDGET:
+        x = torch.randint(0, vocab, (bs, seq), device=device)
+        loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+        loss.backward(); optimizer.step(); optimizer.zero_grad()
+        phase_steps += 1; total_steps += 1
+        if total_steps % 500 == 0:
+            print(f"  [bigbatch] step {total_steps} loss={loss.item():.2f} elapsed={time.time()-t_start:.1f}s", flush=True)
+    print(f"  [bigbatch] phase seq={seq} batch={bs}: {phase_steps} steps in {time.time()-phase_start:.1f}s", flush=True)
+model.eval()
+eval_losses = []
+with torch.no_grad():
+    for _ in range(20):
+        x = torch.randint(0, vocab, (8, 1024), device=device)
+        eval_losses.append(F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1)).item())
+eval_loss = sum(eval_losses)/len(eval_losses)
+print(f"  [bigbatch] TOTAL: {total_steps} steps, eval_loss={eval_loss:.4f}", flush=True)
+results.append(("8. 90/10 + double batch short phase", eval_loss, total_steps))
+del model, optimizer; torch.cuda.empty_cache()
+
+# 9. Layer drop during short phase only (full layers during long phase)
+print("\n--- 9. 90%@128 drop50% + 10%@1024 full layers ---")
+model = GPT(11).to(device).bfloat16()
+model.train()
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+for _ in range(3):
+    x = torch.randint(0, vocab, (batch, 1024), device=device)
+    loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+    loss.backward(); optimizer.step(); optimizer.zero_grad()
+total_steps = 0; t_start = time.time()
+# Phase 1: short seq + layer drop
+phase_start = time.time()
+phase_steps = 0
+while (time.time() - phase_start) < 0.9 * TIME_BUDGET:
+    x = torch.randint(0, vocab, (batch, 128), device=device)
+    h = model.embed(x)
+    for i, block in enumerate(model.blocks):
+        drop_p = i / len(model.blocks) * 0.5
+        if torch.rand(1).item() < drop_p:
+            continue
+        h = block(h)
+    logits = model.head(model.norm(h))
+    loss = F.cross_entropy(logits[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+    loss.backward(); optimizer.step(); optimizer.zero_grad()
+    phase_steps += 1; total_steps += 1
+    if total_steps % 500 == 0:
+        print(f"  [drop_short] step {total_steps} loss={loss.item():.2f} elapsed={time.time()-t_start:.1f}s", flush=True)
+print(f"  [drop_short] phase seq=128+drop: {phase_steps} steps in {time.time()-phase_start:.1f}s", flush=True)
+# Phase 2: full layers, long seq
+phase_start = time.time()
+phase_steps = 0
+while (time.time() - phase_start) < 0.1 * TIME_BUDGET:
+    x = torch.randint(0, vocab, (batch, 1024), device=device)
+    loss = F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1))
+    loss.backward(); optimizer.step(); optimizer.zero_grad()
+    phase_steps += 1; total_steps += 1
+print(f"  [drop_short] phase seq=1024 full: {phase_steps} steps in {time.time()-phase_start:.1f}s", flush=True)
+model.eval()
+eval_losses = []
+with torch.no_grad():
+    for _ in range(20):
+        x = torch.randint(0, vocab, (batch, 1024), device=device)
+        eval_losses.append(F.cross_entropy(model(x)[:, :-1].reshape(-1, vocab), x[:, 1:].reshape(-1)).item())
+eval_loss = sum(eval_losses)/len(eval_losses)
+print(f"  [drop_short] TOTAL: {total_steps} steps, eval_loss={eval_loss:.4f}", flush=True)
+results.append(("9. 90/10 + layer drop in short phase", eval_loss, total_steps))
+del model, optimizer; torch.cuda.empty_cache()
+
 print("\n" + "=" * 85)
 print("RESULTS — sorted by eval loss (lower = better)")
 print("=" * 85)
