@@ -47,6 +47,10 @@ echo "  ✓ backup → train_gpt.py.bak"
 
 # Patch 1: replace the F.scaled_dot_product_attention call to manually
 # repeat KV heads (since enable_gqa doesn't exist).
+# Patch 2: disable torch.compile (also fails on enable_gqa).
+# Patch 3: honor SKIP_FINAL_EVAL=1 to bail out before the slow int8+zlib
+#          val pass — useful for SIGNAL tests where we just want train_loss
+#          and don't care about the final quantized number.
 python3 << 'PYEOF'
 with open("train_gpt.py", "r") as f:
     content = f.read()
@@ -97,6 +101,28 @@ new_opt = "# PATCHED: zeropower_via_newtonschulz5 = torch.compile(zeropower_via_
 if old_opt in content:
     content = content.replace(old_opt, new_opt)
     print("  ✓ disabled torch.compile on Newton-Schulz")
+
+# Patch 3: honor SKIP_FINAL_EVAL=1 to skip the int8+zlib roundtrip eval
+# (saves 4-5 minutes per run when we only want signal/relative comparisons).
+old_int8 = """    if distributed:
+        dist.barrier()
+    with open("final_model.int8.ptz", "rb") as f:
+        quant_blob_disk = f.read()"""
+new_int8 = """    if os.environ.get("SKIP_FINAL_EVAL", "0") == "1":
+        log0("SKIP_FINAL_EVAL=1 — skipping int8+zlib roundtrip eval (signal mode)")
+        if distributed:
+            dist.destroy_process_group()
+        sys.exit(0)
+    if distributed:
+        dist.barrier()
+    with open("final_model.int8.ptz", "rb") as f:
+        quant_blob_disk = f.read()"""
+if old_int8 in content:
+    content = content.replace(old_int8, new_int8)
+    print("  ✓ added SKIP_FINAL_EVAL env var support")
+    # Make sure sys is imported (it usually is, but check)
+    if "import sys" not in content:
+        content = "import sys\n" + content
 
 with open("train_gpt.py", "w") as f:
     f.write(content)

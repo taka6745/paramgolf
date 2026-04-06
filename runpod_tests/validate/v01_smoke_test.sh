@@ -9,7 +9,7 @@
 #   1. TRAIN_SEQ_LEN=128 — 6.1x faster than 1024 (per gpu_speed_test.py)
 #   2. TRAIN_BATCH_TOKENS=65536 — sane batch, kills microbatch overhead
 #   3. VAL_BATCH_SIZE=131072 — fast val pass
-#   4. VAL_LOSS_EVERY=0 — no mid-training val
+#   4. VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 — no mid-training val
 #   5. We don't care about quality here, just "does it run"
 
 set -e
@@ -19,7 +19,7 @@ echo "=== V01: SMOKE TEST (base train_gpt.py, fast settings) ==="
 echo
 
 ITERATIONS=50 \
-VAL_LOSS_EVERY=0 \
+VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 \
 TRAIN_LOG_EVERY=10 \
 TRAIN_SEQ_LEN=128 \
 TRAIN_BATCH_TOKENS=65536 \

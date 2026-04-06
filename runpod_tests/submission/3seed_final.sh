@@ -1,18 +1,18 @@
 #!/bin/bash
-# u05_3seed_final.sh — 3-seed validation on 8xH100 for submission
-# Hardware: 8xH100
-# Time: ~45 min (3 × 15 min runs)
+# 3seed_final.sh — Final 3-seed submission build
+# Hardware: 8xH100 (refuses to run on smaller GPUs)
+# Time: ~45 min (3 × ~15 min runs)
 # Cost: ~$15
 #
-# ONLY RUN THIS AFTER u04 IS GOOD.
-# This produces the final submission scores.
+# This is THE submission build. Run after u04_full_stack from unknown/
+# has produced a competitive single-seed number. This produces the
+# 3-seed mean ± std that goes into submission.json.
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
-echo "U05: 3-SEED FINAL ON 8xH100"
+echo "SUBMISSION: 3-SEED FINAL ON 8xH100"
 echo "=========================================="
 echo
 
@@ -25,19 +25,18 @@ if [ "$N_GPUS" -lt 8 ]; then
 fi
 echo "GPUs: $N_GPUS ✓"
 
-# Verify u04 ran successfully
-if [ ! -f logs/u04/full_stack.log ]; then
-    echo "✗ FAIL: u04 not run yet. Validate single-seed first."
-    exit 1
-fi
-U04_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u04/full_stack.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-echo "u04 result: $U04_BPB BPP"
-if [ -z "$U04_BPB" ]; then
-    echo "✗ FAIL: u04 has no val_bpb"
-    exit 1
+# Recommend (not require) that u04 ran
+if [ -f runpod_tests/logs/u04/full_stack.log ]; then
+    U04_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u04/full_stack.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+    if [ -n "$U04_BPB" ]; then
+        echo "Single-seed dry run (u04) result: $U04_BPB BPP"
+    fi
+else
+    echo "△ WARNING: u04_full_stack hasn't been run as a dry-run."
+    echo "  Burning $15 without a dry run is risky. Continuing anyway."
 fi
 
-mkdir -p logs/u05
+mkdir -p runpod_tests/logs/submission
 
 # Use the EXACT config from u04
 COMMON="
@@ -64,7 +63,7 @@ for SEED in 42 314 999; do
     echo
     echo "=== SEED $SEED ==="
     env $COMMON SEED=$SEED \
-        torchrun --nproc_per_node=8 train_gpt.py 2>&1 | tee logs/u05/seed_${SEED}.log
+        torchrun --nproc_per_node=8 train_gpt.py 2>&1 | tee runpod_tests/logs/submission/seed_${SEED}.log
 done
 
 # Compute mean and std
@@ -79,7 +78,7 @@ import statistics
 
 scores = []
 for seed in [42, 314, 999]:
-    with open(f"logs/u05/seed_{seed}.log") as f:
+    with open(f"runpod_tests/logs/submission/seed_{seed}.log") as f:
         for line in f:
             m = re.search(r"final_int8_zlib_roundtrip val_loss:[\d.]+ val_bpb:([\d.]+)", line)
             if m:

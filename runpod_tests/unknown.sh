@@ -43,8 +43,11 @@ if [ $# -gt 0 ]; then
         done
     done
 else
-    # Default order: arch → speed → GLA chain → progressive →
-    #                cache → continual → eval-tricks → full → 3-seed
+    # Default order: SIGNAL tests first (cheap, A/B comparisons, no eval pass)
+    # then DRY RUN (u04 — full stack single-seed competitive)
+    #
+    # u05 (3-seed final submission) is NOT here — it lives in
+    # runpod_tests/submission/ and is run via ./submission.sh
     for pattern in \
         "$SCRIPT_DIR/unknown/u01_"*.sh \
         "$SCRIPT_DIR/unknown/u06_"*.sh \
@@ -54,8 +57,7 @@ else
         "$SCRIPT_DIR/unknown/u03_"*.sh \
         "$SCRIPT_DIR/unknown/u09_"*.sh \
         "$SCRIPT_DIR/unknown/u10_"*.sh \
-        "$SCRIPT_DIR/unknown/u04_"*.sh \
-        "$SCRIPT_DIR/unknown/u05_"*.sh; do
+        "$SCRIPT_DIR/unknown/u04_"*.sh; do
         for script in $pattern; do
             if [ -f "$script" ]; then
                 TESTS+=("$script")

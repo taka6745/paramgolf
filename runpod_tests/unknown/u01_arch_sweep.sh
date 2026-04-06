@@ -11,7 +11,7 @@
 #   - TRAIN_SEQ_LEN=128 (6.1x faster than 1024 per gpu_speed_test.py)
 #   - TRAIN_BATCH_TOKENS=65536 (sane batch, no microbatch overhead)
 #   - GRAD_ACCUM_STEPS=1
-#   - VAL_LOSS_EVERY=0 (skip mid-training val)
+#   - VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 (skip mid-training val)
 #   - VAL_BATCH_SIZE=131072 (fast final val pass)
 
 set -e
@@ -33,7 +33,7 @@ TRAIN_SEQ_LEN=128
 TRAIN_BATCH_TOKENS=65536
 GRAD_ACCUM_STEPS=1
 VAL_BATCH_SIZE=131072
-VAL_LOSS_EVERY=0
+VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1
 WARMUP_STEPS=10
 MAX_WALLCLOCK_SECONDS=0
 ITERATIONS=500
