@@ -32,27 +32,31 @@ fi
 
 # Activate and install Python deps
 source .venv/bin/activate
-pip install -q --upgrade pip
+pip install --upgrade pip --progress-bar off
 
-# Core ML stack
-pip install -q \
+# Core ML stack (torch is large, ~2 GB download — be patient)
+echo "Installing torch + sentencepiece + numpy (this is the slow part)..."
+pip install --progress-bar off \
     'torch>=2.4.0' \
     sentencepiece \
     numpy
 
 # Data + tokenizer
-pip install -q \
+echo "Installing huggingface_hub + datasets + tqdm..."
+pip install --progress-bar off \
     huggingface_hub \
     datasets \
     tqdm
 
 # Compression (for artifact packing)
-pip install -q \
+echo "Installing zstandard + brotli..."
+pip install --progress-bar off \
     zstandard \
     brotli
 
 # DC500 categories (KMeans clustering)
-pip install -q scikit-learn
+echo "Installing scikit-learn..."
+pip install --progress-bar off scikit-learn
 
 # Verify GPU
 python3 -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"none\"}'); print(f'VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB' if torch.cuda.is_available() else '')"
