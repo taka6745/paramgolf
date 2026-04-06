@@ -31,7 +31,7 @@ TRAIN_LOG_EVERY=50 \
 TRAIN_BATCH_TOKENS=8192 \
 GRAD_ACCUM_STEPS=8 \
 WARMUP_STEPS=10 \
-.venv/bin/python3 train_gpt.py 2>&1 | tee /tmp/v04_progressive.log
+python3 train_gpt.py 2>&1 | tee /tmp/v04_progressive.log
 
 echo
 echo "=== VALIDATION ==="

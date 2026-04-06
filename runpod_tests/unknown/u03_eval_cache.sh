@@ -54,7 +54,7 @@ ITERATIONS=1000000 MAX_WALLCLOCK_SECONDS=600 \
 TRAIN_LOG_EVERY=200 \
 TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
 DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
-.venv/bin/python3 train_gpt.py 2>&1 | tee logs/u03/run_A_no_cache.log
+python3 train_gpt.py 2>&1 | tee logs/u03/run_A_no_cache.log
 
 # === Run B: With eval cache + hedge mixer ===
 echo
@@ -77,7 +77,7 @@ ITERATIONS=1000000 MAX_WALLCLOCK_SECONDS=600 \
 TRAIN_LOG_EVERY=200 \
 TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
 DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
-.venv/bin/python3 train_gpt.py 2>&1 | tee logs/u03/run_B_with_cache.log
+python3 train_gpt.py 2>&1 | tee logs/u03/run_B_with_cache.log
 
 # === Compare ===
 echo

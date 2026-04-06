@@ -3,9 +3,18 @@
 # Usage: ./setup.sh
 
 set -u  # don't exit on test failure (let later tests still run)
-cd "$(dirname "$0")"
 
-LOG_DIR="logs"
+# Always run from repo root so relative paths work
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Source venv if it exists (so child processes pick up the right Python)
+if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/setup.log"
 mkdir -p "$LOG_DIR"
 
@@ -37,11 +46,13 @@ run_test() {
     local start=$(date +%s)
     local exit_code=0
 
+    # Each test runs from REPO_ROOT so its relative paths (data/, .venv/) work
+    cd "$REPO_ROOT"
     if [[ "$script" == *.py ]]; then
-        .venv/bin/python3 "$script" 2>&1
+        python3 "$SCRIPT_DIR/$script" 2>&1
         exit_code=$?
     else
-        bash "$script" 2>&1
+        bash "$SCRIPT_DIR/$script" 2>&1
         exit_code=$?
     fi
 
@@ -63,7 +74,7 @@ run_test() {
 # Run all tests in chore/, in order
 {
     for script in chore/00_*.sh chore/01_*.sh chore/02_*.sh chore/03_*.sh chore/04_*.py chore/05_*.py chore/06_*.py chore/07_*.sh; do
-        if [ -f "$script" ]; then
+        if [ -f "$SCRIPT_DIR/$script" ]; then
             run_test "$script"
         fi
     done

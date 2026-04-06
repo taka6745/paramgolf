@@ -44,7 +44,7 @@ run_config() {
         NUM_LAYERS=$LAYERS \
         MODEL_DIM=512 \
         MLP_EXPANSION=$EXPANSION \
-        .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u01/config_${NAME}.log
+        python3 train_gpt.py 2>&1 | tee logs/u01/config_${NAME}.log
 }
 
 run_config A 9  2

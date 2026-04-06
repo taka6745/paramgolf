@@ -16,7 +16,7 @@ if [ -d "data/datasets/fineweb10B_bpe8192" ] && [ "$(ls data/datasets/fineweb10B
 fi
 
 # Use the data prep script with BPE-8192 variant
-.venv/bin/python3 data/cached_challenge_fineweb.py \
+python3 data/cached_challenge_fineweb.py \
     --variant bpe8192 \
     --train-shards 10 \
     --tokenizer data/tokenizers/fineweb_8192_bpe.model \

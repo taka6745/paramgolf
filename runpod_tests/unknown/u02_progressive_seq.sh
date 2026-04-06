@@ -72,7 +72,7 @@ echo
 echo "--- Run A: BASELINE (standard training) ---"
 env $COMMON \
     PROGRESSIVE_SEQ=0 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u02/run_A_baseline.log
+    python3 train_gpt.py 2>&1 | tee logs/u02/run_A_baseline.log
 
 # === Run B: progressive seq + cosine Phase 2 ===
 echo
@@ -85,7 +85,7 @@ env $COMMON \
     PHASE2_SEQ_LEN=1024 \
     PHASE1_NGRAM_WEIGHT=0.40 \
     PHASE2_NGRAM_WEIGHT=0.05 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u02/run_B_progressive.log
+    python3 train_gpt.py 2>&1 | tee logs/u02/run_B_progressive.log
 
 # === Compare ===
 echo

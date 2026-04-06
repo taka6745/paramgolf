@@ -49,7 +49,7 @@ run_speed() {
         TRAIN_LOG_EVERY=10 \
         TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
         DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
-        .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u06/${NAME}.log | tail -5
+        python3 train_gpt.py 2>&1 | tee logs/u06/${NAME}.log | tail -5
 
     # Extract step_avg from final step
     MS=$(grep 'step:100' logs/u06/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | head -1 | cut -d: -f2)

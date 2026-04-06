@@ -21,7 +21,7 @@ TRAIN_BATCH_TOKENS=8192 \
 GRAD_ACCUM_STEPS=8 \
 WARMUP_STEPS=10 \
 MAX_WALLCLOCK_SECONDS=0 \
-.venv/bin/python3 train_gpt.py 2>&1 | tee /tmp/v01_smoke.log
+python3 train_gpt.py 2>&1 | tee /tmp/v01_smoke.log
 
 # Check pass conditions
 echo

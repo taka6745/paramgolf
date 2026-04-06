@@ -3,9 +3,18 @@
 # Usage: ./validate.sh
 
 set -u
-cd "$(dirname "$0")"
 
-LOG_DIR="logs"
+# Always run from repo root so relative paths work
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Source venv if it exists
+if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/validate.log"
 mkdir -p "$LOG_DIR"
 
@@ -35,11 +44,12 @@ run_test() {
     local start=$(date +%s)
     local exit_code=0
 
+    cd "$REPO_ROOT"
     if [[ "$script" == *.py ]]; then
-        .venv/bin/python3 "$script" 2>&1
+        python3 "$SCRIPT_DIR/$script" 2>&1
         exit_code=$?
     else
-        bash "$script" 2>&1
+        bash "$SCRIPT_DIR/$script" 2>&1
         exit_code=$?
     fi
 
@@ -63,7 +73,7 @@ run_test() {
     for script in validate/v01*.sh validate/v02*.py validate/v03*.py validate/v04*.sh \
                   validate/v05*.py validate/v06*.py validate/v07*.py validate/v08*.py \
                   validate/v09*.py validate/v10*.sh; do
-        if [ -f "$script" ]; then
+        if [ -f "$SCRIPT_DIR/$script" ]; then
             run_test "$script"
         fi
     done

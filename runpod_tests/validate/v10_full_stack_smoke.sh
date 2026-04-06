@@ -43,7 +43,7 @@ WARMUP_STEPS=10 \
 \
 TOKENIZER_PATH="./data/tokenizers/fineweb_8192_bpe.model" \
 DATA_PATH="./data/datasets/fineweb10B_bpe8192" \
-.venv/bin/python3 train_gpt.py 2>&1 | tee /tmp/v10_full_stack.log
+python3 train_gpt.py 2>&1 | tee /tmp/v10_full_stack.log
 
 echo
 echo "=== VALIDATION ==="

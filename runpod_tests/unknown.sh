@@ -5,9 +5,18 @@
 # If args: runs only specified tests
 
 set -u
-cd "$(dirname "$0")"
 
-LOG_DIR="logs"
+# Always run from repo root so relative paths work
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Source venv if it exists
+if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/unknown.log"
 mkdir -p "$LOG_DIR"
 
@@ -43,7 +52,8 @@ run_test() {
     local start=$(date +%s)
     local exit_code=0
 
-    bash "$script" 2>&1
+    cd "$REPO_ROOT"
+    bash "$SCRIPT_DIR/$script" 2>&1
     exit_code=$?
 
     local end=$(date +%s)
@@ -70,7 +80,7 @@ if [ $# -gt 0 ]; then
         echo
         for arg in "$@"; do
             for script in unknown/${arg}*.sh; do
-                if [ -f "$script" ]; then
+                if [ -f "$SCRIPT_DIR/$script" ]; then
                     run_test "$script"
                 fi
             done
@@ -83,7 +93,7 @@ else
         # Order: u01 (arch), u06 (speed), u07/u08 (GLA chain), u02 (progressive), u03 (cache), u04 (full), u05 (3-seed)
         for script in unknown/u01*.sh unknown/u06*.sh unknown/u07*.sh unknown/u08*.sh \
                       unknown/u02*.sh unknown/u03*.sh unknown/u04*.sh unknown/u05*.sh; do
-            if [ -f "$script" ]; then
+            if [ -f "$SCRIPT_DIR/$script" ]; then
                 run_test "$script"
             fi
         done

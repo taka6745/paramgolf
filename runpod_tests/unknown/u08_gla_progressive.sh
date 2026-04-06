@@ -73,7 +73,7 @@ env \
     \
     TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
     DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u08/gla_progressive.log
+    python3 train_gpt.py 2>&1 | tee logs/u08/gla_progressive.log
 
 echo
 echo "=== U08 RESULT ==="

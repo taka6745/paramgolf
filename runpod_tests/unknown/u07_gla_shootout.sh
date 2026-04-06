@@ -65,7 +65,7 @@ echo "--- Run A: STANDARD ATTENTION ---"
 env $COMMON \
     ATTENTION_TYPE=standard \
     SEQ_LEN=2048 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u07/A_standard.log
+    python3 train_gpt.py 2>&1 | tee logs/u07/A_standard.log
 
 # === Run B: GLA ===
 echo
@@ -73,7 +73,7 @@ echo "--- Run B: GLA ---"
 env $COMMON \
     ATTENTION_TYPE=gla \
     SEQ_LEN=2048 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u07/B_gla.log
+    python3 train_gpt.py 2>&1 | tee logs/u07/B_gla.log
 
 # === Run C: RWKV-7 ===
 echo
@@ -81,7 +81,7 @@ echo "--- Run C: RWKV-7 ---"
 env $COMMON \
     ATTENTION_TYPE=rwkv7 \
     SEQ_LEN=2048 \
-    .venv/bin/python3 train_gpt.py 2>&1 | tee logs/u07/C_rwkv7.log
+    python3 train_gpt.py 2>&1 | tee logs/u07/C_rwkv7.log
 
 # === Compare ===
 echo

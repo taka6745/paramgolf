@@ -22,7 +22,7 @@ mkdir -p data/tokenizers
 
 # Use sentencepiece BPE training
 # Sample 1M docs from FineWeb for vocab building
-.venv/bin/python3 << 'PYEOF'
+python3 << 'PYEOF'
 import sentencepiece as spm
 import os
 from datasets import load_dataset
