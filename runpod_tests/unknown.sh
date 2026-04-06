@@ -43,7 +43,8 @@ if [ $# -gt 0 ]; then
         done
     done
 else
-    # Default order: arch, speed, GLA chain, progressive, cache, full, 3-seed
+    # Default order: arch → speed → GLA chain → progressive →
+    #                cache → continual → eval-tricks → full → 3-seed
     for pattern in \
         "$SCRIPT_DIR/unknown/u01_"*.sh \
         "$SCRIPT_DIR/unknown/u06_"*.sh \
@@ -51,6 +52,8 @@ else
         "$SCRIPT_DIR/unknown/u08_"*.sh \
         "$SCRIPT_DIR/unknown/u02_"*.sh \
         "$SCRIPT_DIR/unknown/u03_"*.sh \
+        "$SCRIPT_DIR/unknown/u09_"*.sh \
+        "$SCRIPT_DIR/unknown/u10_"*.sh \
         "$SCRIPT_DIR/unknown/u04_"*.sh \
         "$SCRIPT_DIR/unknown/u05_"*.sh; do
         for script in $pattern; do
