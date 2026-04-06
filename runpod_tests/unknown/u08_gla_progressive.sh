@@ -64,15 +64,15 @@ env \
     MODEL_DIM=512 \
     MLP_EXPANSION=$MLP_EXPANSION \
     \
-    TRAIN_BATCH_TOKENS=524288 \
+    TRAIN_BATCH_TOKENS=65536 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 \
     GRAD_ACCUM_STEPS=1 \
     WARMUP_STEPS=10 \
     ITERATIONS=1000000 \
-    MAX_WALLCLOCK_SECONDS=600 \
+    MAX_WALLCLOCK_SECONDS=180 \
     TRAIN_LOG_EVERY=200 \
     \
-    TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
-    DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
+     \
+     \
     python3 train_gpt.py 2>&1 | tee logs/u08/gla_progressive.log
 
 echo

@@ -1,24 +1,30 @@
 #!/bin/bash
-# v01_smoke_test.sh — 50 steps with the BASE competition train_gpt.py
-# Goal: verify CUDA port runs at all
-# Hardware: 3060 (12 GB)
-# Time: ~3 min
-# Cost: ~$0.01
+# v01_smoke_test.sh — Fast 50-step smoke test (base train_gpt.py)
+# Goal: verify CUDA port runs and loss decreases. NOT a quality test.
+# Hardware: any GPU with ≥10GB
+# Time: ~30 sec on a 3080 Ti (down from 9 min before optimization)
+# Cost: ~$0.005
+#
+# Speed tricks (from GPU_RESULTS.md findings):
+#   1. TRAIN_SEQ_LEN=128 — 6.1x faster than 1024 (per gpu_speed_test.py)
+#   2. TRAIN_BATCH_TOKENS=65536 — sane batch, kills microbatch overhead
+#   3. VAL_BATCH_SIZE=131072 — fast val pass
+#   4. VAL_LOSS_EVERY=0 — no mid-training val
+#   5. We don't care about quality here, just "does it run"
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
-echo "=== V01: SMOKE TEST (base train_gpt.py) ==="
+echo "=== V01: SMOKE TEST (base train_gpt.py, fast settings) ==="
 echo
 
-# Use the DEFAULT competition config — no patches yet
-# Just verify the unchanged script trains without errors
 ITERATIONS=50 \
 VAL_LOSS_EVERY=0 \
 TRAIN_LOG_EVERY=10 \
-TRAIN_BATCH_TOKENS=8192 \
-GRAD_ACCUM_STEPS=8 \
+TRAIN_SEQ_LEN=128 \
+TRAIN_BATCH_TOKENS=65536 \
+GRAD_ACCUM_STEPS=1 \
+VAL_BATCH_SIZE=131072 \
 WARMUP_STEPS=10 \
 MAX_WALLCLOCK_SECONDS=0 \
 python3 train_gpt.py 2>&1 | tee runpod_tests/logs/v01_smoke.log
