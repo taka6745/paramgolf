@@ -25,7 +25,16 @@ def main():
     # In production, this should be re-computed from actual model weights
     # after training
     print("Loading sample weight distribution...")
-    bigram = np.load("data/bigram_tab_8192v.npy")
+    # Try BPE-8192 first, fall back to sp1024
+    for path in ["data/bigram_tab_8192v.npy", "data/bigram_tab_1024v.npy"]:
+        if os.path.exists(path):
+            print(f"  Using {path}")
+            bigram = np.load(path)
+            break
+    else:
+        print("✗ No bigram table found. Run 04_build_ngrams.py first.")
+        import sys
+        sys.exit(1)
     weights = bigram.flatten().astype(np.float64)
     # Bound to typical weight range
     weights = weights[(weights > -10) & (weights < 10)]

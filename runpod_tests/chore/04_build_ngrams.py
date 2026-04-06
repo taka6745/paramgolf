@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 """
-04_build_ngrams.py — Build bigram, trigram, 4-gram tables for BPE-8192
+04_build_ngrams.py — Build bigram, trigram, 4-gram tables for SP-1024
 
 Runs on: any pod (CPU work)
 Time: ~4 min
 Outputs:
-    data/bigram_tab_8192v.npy        (2.94 MB, 16384 hash buckets)
-    data/trigram_logprobs_8192v.npy  (0.64 MB)
-    data/fourgram_logprobs_8192v.npy (0.32 MB)
+    data/bigram_tab_1024v.npy        (small, 2048 hash buckets × 1024 vocab)
+    data/trigram_logprobs_1024v.npy
+    data/fourgram_logprobs_1024v.npy
 
 These get loaded by train_gpt.py and added as logit bias during training.
+Using SP-1024 baseline. To rebuild for BPE-8192 later, change VOCAB and DATA_DIR.
 """
 
 import os
+import sys
 import numpy as np
 from collections import defaultdict
 from pathlib import Path
 
-VOCAB = 8192
-HASH_BUCKETS = 16384  # 2x vocab for low collision
-DATA_DIR = Path("data/datasets/fineweb10B_bpe8192")
+VOCAB = 1024
+HASH_BUCKETS = 2048  # 2x vocab for low collision
+DATA_DIR = Path("data/datasets/fineweb10B_sp1024")
 
 # Hash functions (signed polynomial — confirmed +0.003 BPP on Mac)
 def hash_bigram(prev):
@@ -33,10 +35,22 @@ def hash_fourgram(prev3, prev2, prev1):
 
 
 def load_tokens():
-    """Load all training tokens from BPE-8192 shards."""
-    print("Loading tokens from shards...")
+    """Load all training tokens from SP-1024 shards."""
+    print(f"Loading tokens from {DATA_DIR}...")
+    if not DATA_DIR.exists():
+        print(f"  ✗ {DATA_DIR} does not exist")
+        print(f"  Did 01_download_data.sh run successfully?")
+        print(f"  Available datasets: {list(Path('data/datasets').glob('*')) if Path('data/datasets').exists() else 'none'}")
+        sys.exit(1)
+
     all_tokens = []
-    for shard_path in sorted(DATA_DIR.glob("fineweb_train_*.bin")):
+    shard_paths = sorted(DATA_DIR.glob("fineweb_train_*.bin"))
+    if not shard_paths:
+        print(f"  ✗ No fineweb_train_*.bin shards in {DATA_DIR}")
+        print(f"  Files in dir: {list(DATA_DIR.iterdir())}")
+        sys.exit(1)
+
+    for shard_path in shard_paths:
         # Each shard is a header + uint16 tokens
         with open(shard_path, "rb") as f:
             header = np.frombuffer(f.read(1024), dtype=np.int32)
@@ -94,11 +108,11 @@ def build_fourgram(tokens):
 
 
 def main():
-    if all(os.path.exists(f) for f in [
-        "data/bigram_tab_8192v.npy",
-        "data/trigram_logprobs_8192v.npy",
-        "data/fourgram_logprobs_8192v.npy",
-    ]):
+    bigram_path = f"data/bigram_tab_{VOCAB}v.npy"
+    trigram_path = f"data/trigram_logprobs_{VOCAB}v.npy"
+    fourgram_path = f"data/fourgram_logprobs_{VOCAB}v.npy"
+
+    if all(os.path.exists(f) for f in [bigram_path, trigram_path, fourgram_path]):
         print("✓ All n-gram tables already exist, skipping")
         return
 
@@ -106,15 +120,15 @@ def main():
     print(f"\nTotal tokens: {len(tokens):,}")
 
     bigram = build_bigram(tokens)
-    np.save("data/bigram_tab_8192v.npy", bigram)
+    np.save(bigram_path, bigram)
     print(f"✓ Saved bigram: {bigram.shape}, {bigram.nbytes/1024/1024:.2f} MB")
 
     trigram = build_trigram(tokens)
-    np.save("data/trigram_logprobs_8192v.npy", trigram)
+    np.save(trigram_path, trigram)
     print(f"✓ Saved trigram: {trigram.shape}, {trigram.nbytes/1024/1024:.2f} MB")
 
     fourgram = build_fourgram(tokens)
-    np.save("data/fourgram_logprobs_8192v.npy", fourgram)
+    np.save(fourgram_path, fourgram)
     print(f"✓ Saved 4-gram: {fourgram.shape}, {fourgram.nbytes/1024/1024:.2f} MB")
 
     print("\n✓ All n-gram tables built")

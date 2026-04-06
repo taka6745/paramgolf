@@ -14,10 +14,10 @@ import numpy as np
 from sklearn.cluster import KMeans
 from pathlib import Path
 
-VOCAB = 8192
+VOCAB = 1024
 N_CATEGORIES = 500
-DATA_DIR = Path("data/datasets/fineweb10B_bpe8192")
-OUTPUT = "data/dist_cats_500_8192.npz"
+DATA_DIR = Path("data/datasets/fineweb10B_sp1024")
+OUTPUT = f"data/dist_cats_500_{VOCAB}.npz"
 
 
 def main():
@@ -25,8 +25,14 @@ def main():
         print(f"✓ {OUTPUT} already exists, skipping")
         return
 
+    bigram_path = f"data/bigram_tab_{VOCAB}v.npy"
+    if not os.path.exists(bigram_path):
+        print(f"✗ {bigram_path} not found. Run 04_build_ngrams.py first.")
+        import sys
+        sys.exit(1)
+
     # Load bigram table (already built)
-    bigram_log = np.load("data/bigram_tab_8192v.npy")
+    bigram_log = np.load(bigram_path)
     print(f"Loaded bigram table: {bigram_log.shape}")
 
     # Convert to probability distribution per token

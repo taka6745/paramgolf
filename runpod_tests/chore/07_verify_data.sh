@@ -1,9 +1,8 @@
 #!/bin/bash
-# 07_verify_data.sh — Sanity check all chore outputs
+# 07_verify_data.sh — Sanity check chore outputs (SP-1024 path)
 # Time: ~1 min
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=== VERIFY DATA ==="
@@ -24,25 +23,20 @@ check() {
     fi
 }
 
-echo "Tokenizer:"
-check "BPE-8192 model exists" "[ -f data/tokenizers/fineweb_8192_bpe.model ]"
-check "BPE-8192 vocab is 8192" "python3 -c 'import sentencepiece; sp=sentencepiece.SentencePieceProcessor(); sp.load(\"data/tokenizers/fineweb_8192_bpe.model\"); assert sp.vocab_size()==8192'"
-
-echo
 echo "Data:"
-check "BPE-8192 train shards (>=10)" "[ \$(ls data/datasets/fineweb10B_bpe8192/fineweb_train_*.bin 2>/dev/null | wc -l) -ge 10 ]"
-check "BPE-8192 val shard exists" "ls data/datasets/fineweb10B_bpe8192/fineweb_val_*.bin 2>/dev/null"
+check "SP-1024 train shards (>=1)" "[ \$(ls data/datasets/fineweb10B_sp1024/fineweb_train_*.bin 2>/dev/null | wc -l) -ge 1 ]"
+check "SP-1024 val shard exists" "ls data/datasets/fineweb10B_sp1024/fineweb_val_*.bin 2>/dev/null"
 
 echo
-echo "N-gram tables:"
-check "Bigram table" "[ -f data/bigram_tab_8192v.npy ]"
-check "Bigram shape (16384, 8192)" "python3 -c 'import numpy; t=numpy.load(\"data/bigram_tab_8192v.npy\"); assert t.shape==(16384,8192), t.shape'"
-check "Trigram table" "[ -f data/trigram_logprobs_8192v.npy ]"
-check "4-gram table" "[ -f data/fourgram_logprobs_8192v.npy ]"
+echo "N-gram tables (SP-1024):"
+check "Bigram table" "[ -f data/bigram_tab_1024v.npy ]"
+check "Bigram shape (2048, 1024)" "python3 -c 'import numpy; t=numpy.load(\"data/bigram_tab_1024v.npy\"); assert t.shape==(2048,1024), t.shape'"
+check "Trigram table" "[ -f data/trigram_logprobs_1024v.npy ]"
+check "4-gram table" "[ -f data/fourgram_logprobs_1024v.npy ]"
 
 echo
 echo "DC categories:"
-check "DC500" "[ -f data/dist_cats_500_8192.npz ]"
+check "DC500" "[ -f data/dist_cats_500_1024.npz ]"
 
 echo
 echo "Quantization:"
