@@ -405,3 +405,42 @@ The runner's `pick_next` already skips experiments with successful results, so l
 ### Audit verdict
 
 We need to PIVOT. The "easy port" patches haven't won at our scale. The queue is mostly running through tail experiments now. Top-3 is locked at the leaky+n-gram stack. Next research fire should look for **genuinely orthogonal** wins (not architecture variations): tokenizer changes, eval-time tricks (n-gram cache, score-first, TTT), data ordering (coprime stride from PR #1099), or compression-side wins (GPTQ quant, weight clustering). The current architectural-tweak vector is exhausted.
+
+---
+
+## Research Fire #5 — 2026-04-08 (cron min :08, Track A = arxiv) — EM-INF PASSED
+
+**Topic**: EM-INF (Entropy Minimization at Inference, NeurIPS 2025, arxiv:2505.15134). Spawned a subagent to find ONE eval-time technique we could ship after audit fire #1's "pivot to non-architectural wins" verdict.
+
+### Subagent verdict: SHIP. My override: PASS.
+
+**Why subagent recommended ship**: The technique runs K steps of gradient descent on the *logits* (not the model weights) to minimize the output entropy, with no gold-token access. Causal-only, legal under issue #677, ~30 LOC, zero new params, degrades gracefully. Genuinely novel-to-comp.
+
+**Why I PASSED** (overriding the subagent):
+
+EM-INF is mathematically equivalent to **temperature sharpening** (T < 1) when applied to logits. The loss landscape of `H(softmax(logits/T))` as a function of `1/T` is monotonically decreasing — so K Adam steps move logits in the direction of higher inverse-temperature, i.e., sharpening.
+
+**Decisive argument**: Cross-entropy (BPB) for a calibrated model is **minimized at T = 1**. Proof: the training loss is `-log P(y_true)` where P uses T=1. The trained model's softmax weights are MLE-optimal *with respect to T=1*. Any T ≠ 1 strictly increases the in-distribution validation NLL because:
+
+```
+NLL(T) = -log( exp(z_true/T) / sum_v(exp(z_v/T)) )
+       = -z_true/T + LSE(z/T)
+d(NLL)/dT  at T=1  =  z_true - <z>_{p}  (by Gibbs derivative)
+                  =  KL gradient term that ML training already drove to zero
+```
+
+So at the trained optimum, dNLL/dT = 0 at T=1. Moving away from T=1 in EITHER direction strictly increases NLL.
+
+**Cross-check with our prior result**: Patch 14 (USE_ENTROPY_ADAPTIVE_NGRAM) was a related "entropy = signal" trap. It falsified at scale (EA0=3.4592, EA1=3.4490, EA2=3.3599, EA3=3.4409 — all worse than baseline). EM-INF is the same class of mistake, just at eval time instead of training time.
+
+**Conclusion**: EM-INF can only help BPB if the model is *miscalibrated and overconfidently wrong on average*, which is the opposite of what we want. For a well-trained model on in-distribution data, it's a pure regression. PASS.
+
+### What this fire produced
+
+Nothing pushed. Audit verdict still stands: pivot to non-architectural wins. Next research fire (Track B at min :38) should look at PR #1437's "Legal N-gram Tilt" since it's the *legal* version of PR #1430's suspicious 0.39642 score, and the term "tilt" implies a multiplicative correction at decode time which IS mathematically distinct from temperature sharpening.
+
+### Better directions for next research fires (logged for handoff)
+
+1. **N-gram Tilt** (PR #1437/#461 framework) — multiplicative reweighting of decode probabilities by an n-gram cache built from the prefix that's already been seen. This is causal and ADDS information rather than just sharpening. Worth a focused subagent dive next fire.
+2. **BPE-8192 ngram tables** — task #49 still pending. Would let us A/B test SP1024 vs BPE8192 with the same n-gram-bias stack, which is the single biggest tokenizer-side gap vs the top open PRs.
+3. **Coprime-Stride data loader** (PR #1099 merged record) — data ordering trick, could be ported in <50 LOC and is grounded in a merged record, not speculative.
