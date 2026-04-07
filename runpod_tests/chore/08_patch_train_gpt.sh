@@ -300,20 +300,21 @@ else:
         self.register_buffer("_fourgram_tab", torch.zeros(1, dtype=torch.float32), persistent=False)
         if self._ngram_enabled:
             import numpy as _np
+            _ngsuffix = "_tab" if bool(int(os.environ.get("USE_TABULATION_HASH", "0"))) else ""
             try:
-                _bg = _np.load("./data/bigram_tab_{}v.npy".format(vocab_size))
+                _bg = _np.load("./data/bigram_tab_{}v{}.npy".format(vocab_size, _ngsuffix))
                 self._bigram_tab = torch.from_numpy(_bg).float()
-                print("NGRAM_BIAS: loaded bigram", _bg.shape, "w=", self._ngram_w_bigram)
+                print("NGRAM_BIAS: loaded bigram", _bg.shape, "w=", self._ngram_w_bigram, "suffix=", _ngsuffix)
             except Exception as _e:
                 print("NGRAM_BIAS: bigram load failed:", _e)
             try:
-                _tg = _np.load("./data/trigram_logprobs_{}v.npy".format(vocab_size))
+                _tg = _np.load("./data/trigram_logprobs_{}v{}.npy".format(vocab_size, _ngsuffix))
                 self._trigram_tab = torch.from_numpy(_tg).float()
                 print("NGRAM_BIAS: loaded trigram", _tg.shape, "w=", self._ngram_w_trigram)
             except Exception as _e:
                 print("NGRAM_BIAS: trigram load failed:", _e)
             try:
-                _fg = _np.load("./data/fourgram_logprobs_{}v.npy".format(vocab_size))
+                _fg = _np.load("./data/fourgram_logprobs_{}v{}.npy".format(vocab_size, _ngsuffix))
                 self._fourgram_tab = torch.from_numpy(_fg).float()
                 print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
             except Exception as _e:
@@ -461,6 +462,136 @@ else:
     if old_block_forward in content:
         content = content.replace(old_block_forward, new_block_forward)
         print("  ✓ added SMEAR_GATE pre-MLP smear")
+
+# Patch 15: USE_TABULATION_HASH=1 → swap polynomial n-gram hash for tabulation hash.
+# MLX prototype validated -0.0024 BPB across 5 seeds (2.4σ over noise) on 100M tokens
+# of fineweb_train_000000.bin. Provably 3-independent vs polynomial which is 2-dependent.
+# Build tables MUST be re-built with USE_TABULATION_HASH=1; this patch only handles
+# the LOOKUP side in train_gpt.py. The build side is in 04_build_ngrams.py.
+# Idempotent via TABULATION_HASH_MARKER.
+if "TABULATION_HASH_MARKER" in content:
+    print("  ✓ tabulation hash already applied")
+else:
+    # Add T1/T2/T3 buffer load in NGRAM_BIAS init (after fourgram load)
+    old_ng_init_close = """            try:
+                _fg = _np.load("./data/fourgram_logprobs_{}v.npy".format(vocab_size))
+                self._fourgram_tab = torch.from_numpy(_fg).float()
+                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
+            except Exception as _e:
+                print("NGRAM_BIAS: fourgram load failed:", _e)"""
+    new_ng_init_close = """            try:
+                _fg = _np.load("./data/fourgram_logprobs_{}v.npy".format(vocab_size))
+                self._fourgram_tab = torch.from_numpy(_fg).float()
+                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
+            except Exception as _e:
+                print("NGRAM_BIAS: fourgram load failed:", _e)
+            # TABULATION_HASH_MARKER: load T1/T2/T3 lookup tables if available
+            self._use_tabulation = bool(int(os.environ.get("USE_TABULATION_HASH", "0")))
+            self.register_buffer("_tab_t1", torch.zeros(1, dtype=torch.int64), persistent=False)
+            self.register_buffer("_tab_t2", torch.zeros(1, dtype=torch.int64), persistent=False)
+            self.register_buffer("_tab_t3", torch.zeros(1, dtype=torch.int64), persistent=False)
+            if self._use_tabulation:
+                try:
+                    self._tab_t1 = torch.from_numpy(_np.load("./data/tab_hash_t1.npy")).long()
+                    self._tab_t2 = torch.from_numpy(_np.load("./data/tab_hash_t2.npy")).long()
+                    self._tab_t3 = torch.from_numpy(_np.load("./data/tab_hash_t3.npy")).long()
+                    print("TABULATION_HASH: loaded T1/T2/T3 tables shape", self._tab_t1.shape)
+                except Exception as _e:
+                    print("TABULATION_HASH: load failed (will fall back to polynomial):", _e)
+                    self._use_tabulation = False"""
+    if old_ng_init_close in content:
+        content = content.replace(old_ng_init_close, new_ng_init_close)
+        print("  ✓ added TABULATION_HASH buffer load")
+
+    # Replace bigram hash lookup
+    old_bi_hash = """            _ids_flat = input_ids.reshape(-1).long()  # (B*S,)
+            _H = self._ngram_hash
+            _h_bi = (_ids_flat * 36313) % _H"""
+    new_bi_hash = """            _ids_flat = input_ids.reshape(-1).long()  # (B*S,)
+            _H = self._ngram_hash
+            if self._use_tabulation and self._tab_t1.numel() > 1:
+                _h_bi = self._tab_t1[_ids_flat] % _H
+            else:
+                _h_bi = (_ids_flat * 36313) % _H"""
+    if old_bi_hash in content:
+        content = content.replace(old_bi_hash, new_bi_hash)
+        print("  ✓ added TABULATION_HASH bigram lookup")
+
+    # Replace trigram hash lookup
+    old_tri_hash = """                _h_tri = (_prev2 * 36313 + _ids_flat * 27191) % _H"""
+    new_tri_hash = """                if self._use_tabulation and self._tab_t1.numel() > 1:
+                    _h_tri = (self._tab_t1[_prev2] ^ self._tab_t2[_ids_flat]) % _H
+                else:
+                    _h_tri = (_prev2 * 36313 + _ids_flat * 27191) % _H"""
+    if old_tri_hash in content:
+        content = content.replace(old_tri_hash, new_tri_hash)
+        print("  ✓ added TABULATION_HASH trigram lookup")
+
+    # Replace fourgram hash lookup
+    old_four_hash = """                _h_four = (_prev3 * 36313 + _prev2b * 27191 + _ids_flat * 51497) % _H"""
+    new_four_hash = """                if self._use_tabulation and self._tab_t1.numel() > 1:
+                    _h_four = (self._tab_t1[_prev3] ^ self._tab_t2[_prev2b] ^ self._tab_t3[_ids_flat]) % _H
+                else:
+                    _h_four = (_prev3 * 36313 + _prev2b * 27191 + _ids_flat * 51497) % _H"""
+    if old_four_hash in content:
+        content = content.replace(old_four_hash, new_four_hash)
+        print("  ✓ added TABULATION_HASH fourgram lookup")
+
+# Patch 16: USE_GATED_ATTENTION=1 → per-head sigmoid gate over attention output.
+# From "Gated Attention for Large Language Models" (NeurIPS 2025). Adds a tiny
+# Linear (model_dim → num_heads) per attention block that produces a per-position,
+# per-head sigmoid gate. Multiplies the attention output (after SDPA, before proj).
+# Math: y = (attn @ v) * sigmoid(x @ W_gate + b_gate)
+# Init: weight=0, bias=2.94 → sigmoid≈0.95 (near identity, room to learn).
+# Cost: ~num_heads * model_dim params per layer = 8*512 = 4096 params for our 9L
+# baseline = 36k total. Negligible.
+# NOT in any open openai/parameter-golf PR (verified by audit subagent Apr 7).
+# Idempotent via GATED_ATTENTION_MARKER.
+if "GATED_ATTENTION_MARKER" in content:
+    print("  ✓ gated attention already applied")
+else:
+    # Add gate_proj in CausalSelfAttention __init__
+    old_attn_init = """        self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
+        self.rotary = Rotary(self.head_dim, base=rope_base)"""
+    new_attn_init = """        self.q_gain = nn.Parameter(torch.full((num_heads,), qk_gain_init, dtype=torch.float32))
+        self.rotary = Rotary(self.head_dim, base=rope_base)
+        # GATED_ATTENTION_MARKER: per-head sigmoid gate (NeurIPS 2025)
+        self.gate_proj = CastedLinear(dim, num_heads, bias=True)
+        with torch.no_grad():
+            self.gate_proj.weight.zero_()
+            if self.gate_proj.bias is not None:
+                self.gate_proj.bias.fill_(2.94)  # sigmoid(2.94) ≈ 0.95"""
+    if old_attn_init in content:
+        content = content.replace(old_attn_init, new_attn_init)
+        print("  ✓ added GATED_ATTENTION init")
+
+    # Apply the gate after SDPA, before the transpose+reshape
+    old_sdpa_call = """        y = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            is_causal=True,
+            enable_gqa=(self.num_kv_heads != self.num_heads),
+        )
+        y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)"""
+    new_sdpa_call = """        y = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            is_causal=True,
+            enable_gqa=(self.num_kv_heads != self.num_heads),
+        )
+        # GATED_ATTENTION_MARKER apply: per-head sigmoid gate from input x
+        if int(os.environ.get("USE_GATED_ATTENTION", "0")):
+            _gate = torch.sigmoid(self.gate_proj(x).float()).to(dtype=y.dtype)  # (B, S, num_heads)
+            _gate = _gate.transpose(1, 2).unsqueeze(-1)  # (B, num_heads, S, 1)
+            y = y * _gate
+        y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)"""
+    if old_sdpa_call in content:
+        content = content.replace(old_sdpa_call, new_sdpa_call)
+        print("  ✓ added GATED_ATTENTION apply")
 
 # Patch 14: USE_ENTROPY_ADAPTIVE_NGRAM=1 → entropy-gated n-gram bias mixing.
 # TRULY NOVEL — not in any PR I've found, not in any Mac experiment, not in any
