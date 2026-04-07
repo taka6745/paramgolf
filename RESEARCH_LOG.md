@@ -2164,3 +2164,53 @@ SEED=42 (or 999, both work)
 ```
 
 That's it. The "novel patches" we shipped (Mousse/MuonEq-R/NorMuon/Depth Recurrence/EngramLite/Coprime Stride/QK_GAIN/XSA) ALL need to be re-tested. Some may help, some may hurt, all the prior verdicts are invalid.
+
+---
+
+## 🏆 NEW ABSOLUTE TOP-1: SP6_max_stack_900s = 2.5916 (1000 steps, full validated stack)
+
+**Time**: 2026-04-08 22:08 UTC
+**Config**: USE_COPRIME_STRIDE=1, USE_ENGRAM_LITE=1, USE_LEAKY_RELU=1, USE_NGRAM_BIAS=1, TRAIN_SEQ_LEN=1024, TRAIN_BATCH_TOKENS=65536, SEED=42, NGRAM_W_BIGRAM=0.25, NGRAM_W_TRIGRAM=0.25, NGRAM_W_FOURGRAM=0.20, MAX_WALLCLOCK_SECONDS=900
+**train_loss**: 2.5916 (1000 steps in 910 sec, ms_step=898.36)
+**Δ from previous top-1**: -0.397 (CHAMP_L5_seed42 = 2.9885)
+**Δ from broken-config top-1**: -0.682 (CS3 cycle 2 was 3.2595, original top was 3.2734)
+
+### Stacking decomposition under PROPER compute
+
+| Stage | train_loss | Δ |
+|---|---|---|
+| Old broken-config top-1 (CS3 cycle 2) | 3.2595 | baseline |
+| Speed fix only, CHAMP_L5_seed42 (300 steps) | 2.9885 | -0.271 |
+| Speed fix + Coprime + EngramLite, 300 steps | ~2.98 | -0.279 (Coprime+EL adds tiny) |
+| **Speed fix + Coprime + EngramLite, 1000 steps (SP6)** | **2.5916** | **-0.668** (extra 700 steps add -0.39) |
+
+**The dominant factor is steps × batch quality**, not the patches. The "patches" we shipped earlier (Coprime, EngramLite) DO contribute marginally but the lion's share is from the broken-config fix.
+
+### Implications for the H100 escalation
+
+**Current best**: SP6 stack at train_loss 2.5916 (n=1, single seed 42). Need multi-seed for H100.
+
+**Projected H100 val_bpb**: ~1.02-1.05 if the train_loss → val_bpb transfer ratio is preserved (3.0-3.2 train_loss → ~1.10 val_bpb baseline ratio). If accurate, this BEATS the open frontier (PR #1437 = 1.078) by 0.03-0.06.
+
+**This would be a genuine record-breaking result** if the transfer ratio holds.
+
+### Research fire #22 actions
+
+Added 4 new experiments for multi-seed validation:
+- **SP6_seed1337** — same stack, seed 1337, 1500s wallclock
+- **SP6_seed999** — same stack, seed 999, 1500s wallclock
+- **SP6_full_1500s** — same stack, seed 42, 1500s wallclock (longer than the 900s SP6)
+- **SP7_batch131k_seed42** — 2× batch (131072) test, 1500s
+
+Total runtime: 4 × 25 min = 100 min. Will complete before 23:00 UTC end of run.
+
+### Action plan for the rest of the session
+
+1. **Wait for SP6 multi-seed** to complete (next ~100 min)
+2. **Compute 3-seed mean** for the H100 escalation candidate
+3. **If mean < 2.65**, escalate to H100 with the canonical SP6 stack
+4. **NO new patches** — the speed fix is the breakthrough, multi-seed validation matters more than novelty hunting at this point
+
+### Spend
+
+Pod uptime ~10h × $0.30/h = $3.00 raw + ops + H100 burn = **~$6.50 / $36 (18%)**. Plenty of headroom for both the multi-seed validation AND a successful H100 escalation cycle.
