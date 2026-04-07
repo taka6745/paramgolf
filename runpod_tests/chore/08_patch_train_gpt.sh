@@ -351,6 +351,73 @@ else:
         content = content.replace(old_softcap, new_softcap)
         print("  ✓ added NGRAM_BIAS forward pass")
 
+# Patch 9: USE_LEAKY_RELU=1 → MLP activation is leaky_relu(0.5)^2 instead of relu^2.
+# Mac validated -0.014 BPB at 500 steps (LESSONS.md §2). One-line MLP change.
+# Idempotent via LEAKY_RELU_MARKER.
+if "LEAKY_RELU_MARKER" in content:
+    print("  ✓ leaky relu already applied")
+else:
+    old_mlp_forward = """    def forward(self, x: Tensor) -> Tensor:
+        x = torch.relu(self.fc(x))
+        return self.proj(x.square())"""
+    new_mlp_forward = """    def forward(self, x: Tensor) -> Tensor:
+        # LEAKY_RELU_MARKER: optional leaky_relu(0.5)^2 activation (Mac -0.014 BPB)
+        if int(os.environ.get("USE_LEAKY_RELU", "0")):
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+        else:
+            x = torch.relu(self.fc(x))
+        return self.proj(x.square())"""
+    if old_mlp_forward in content:
+        content = content.replace(old_mlp_forward, new_mlp_forward)
+        print("  ✓ added LEAKY_RELU MLP option")
+
+# Patch 10: USE_BYTE_WEIGHT=1 → weight each token's CE loss by its byte count.
+# Mac validated -0.017 BPB at 500 steps (LESSONS.md §3b). Aligns training with bpb metric.
+# We approximate byte count via a precomputed lookup over the tokenizer's vocab.
+# Idempotent via BYTE_WEIGHT_MARKER.
+if "BYTE_WEIGHT_MARKER" in content:
+    print("  ✓ byte-weighted loss already applied")
+else:
+    # Add the weight init in GPT __init__ (right next to ngram init)
+    old_ng_init_close = """        if self._ngram_enabled:
+            import numpy as _np"""
+    new_ng_init_close = """        # BYTE_WEIGHT_MARKER: optional per-token byte-count loss weighting (Mac -0.017 BPB)
+        self._byte_weight_enabled = bool(int(os.environ.get("USE_BYTE_WEIGHT", "0")))
+        self.register_buffer("_byte_weight_lut", torch.ones(vocab_size, dtype=torch.float32), persistent=False)
+        if self._byte_weight_enabled:
+            try:
+                import sentencepiece as _spm
+                _tk = _spm.SentencePieceProcessor(model_file=os.environ.get("TOKENIZER_PATH", "./data/tokenizers/fineweb_1024_bpe.model"))
+                _bytes_per_token = []
+                for _i in range(vocab_size):
+                    try:
+                        _bytes_per_token.append(float(len(_tk.id_to_piece(_i).encode("utf-8"))))
+                    except Exception:
+                        _bytes_per_token.append(1.0)
+                _bw = torch.tensor(_bytes_per_token, dtype=torch.float32)
+                _bw = _bw / _bw.mean()  # normalize so mean weight = 1.0
+                self._byte_weight_lut = _bw
+                print("BYTE_WEIGHT: built lookup table mean=", float(_bw.mean()), " min=", float(_bw.min()), " max=", float(_bw.max()))
+            except Exception as _e:
+                print("BYTE_WEIGHT: build failed:", _e)
+                self._byte_weight_enabled = False
+        if self._ngram_enabled:
+            import numpy as _np"""
+    if old_ng_init_close in content:
+        content = content.replace(old_ng_init_close, new_ng_init_close)
+        print("  ✓ added BYTE_WEIGHT init/loading")
+
+    # Replace cross_entropy reduction with byte-weighted version
+    old_ce = """        return F.cross_entropy(logits.float(), targets, reduction="mean")"""
+    new_ce = """        if self._byte_weight_enabled:
+            _ce = F.cross_entropy(logits.float(), targets, reduction="none")
+            _w = self._byte_weight_lut[targets]
+            return (_ce * _w).sum() / _w.sum()
+        return F.cross_entropy(logits.float(), targets, reduction="mean")"""
+    if old_ce in content:
+        content = content.replace(old_ce, new_ce)
+        print("  ✓ added BYTE_WEIGHT loss path")
+
 # Patch 8: USE_WAVELET=1 → causal multi-scale averaging on half dims after each block.
 # Mac validated -0.018 BPP at 1000 steps (best Mac result was 1.6929 with this).
 # Implementation lifted from runpod_tests/validate/v03_wavelet_mix.py.

@@ -1,16 +1,17 @@
 [
-  {"name": "W0_wavelet_only",       "USE_NGRAM_BIAS": "0", "USE_WAVELET": "1", "WAVELET_MIX_RATIO": "0.20", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "W1_wavelet_w020",       "USE_NGRAM_BIAS": "0", "USE_WAVELET": "1", "WAVELET_MIX_RATIO": "0.10", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "W2_wavelet_strong",     "USE_NGRAM_BIAS": "0", "USE_WAVELET": "1", "WAVELET_MIX_RATIO": "0.30", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "L0_leaky_relu_alone",   "USE_LEAKY_RELU": "1", "USE_NGRAM_BIAS": "0", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "L1_leaky_plus_full_ng", "USE_LEAKY_RELU": "1", "USE_NGRAM_BIAS": "1", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "L2_leaky_plus_full_ng_seed42", "USE_LEAKY_RELU": "1", "USE_NGRAM_BIAS": "1", "SEED": "42", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
 
-  {"name": "WC0_wavelet_plus_full_ngram",  "USE_NGRAM_BIAS": "1", "USE_WAVELET": "1", "WAVELET_MIX_RATIO": "0.20", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "WC1_wavelet_plus_full_ngram_seed42", "USE_NGRAM_BIAS": "1", "USE_WAVELET": "1", "SEED": "42", "WAVELET_MIX_RATIO": "0.20", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "WC2_wavelet_plus_bigram_only", "USE_NGRAM_BIAS": "1", "USE_WAVELET": "1", "WAVELET_MIX_RATIO": "0.20", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.0", "NGRAM_W_FOURGRAM": "0.0", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "BW0_byte_weight_alone", "USE_BYTE_WEIGHT": "1", "USE_NGRAM_BIAS": "0", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "BW1_bw_plus_leaky",     "USE_BYTE_WEIGHT": "1", "USE_LEAKY_RELU": "1", "USE_NGRAM_BIAS": "0", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "BW2_bw_plus_full_ng",   "USE_BYTE_WEIGHT": "1", "USE_NGRAM_BIAS": "1", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
 
-  {"name": "T0_bigbatch_baseline",   "USE_NGRAM_BIAS": "0", "TRAIN_BATCH_TOKENS": "8192", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "STK_full_stack",        "USE_LEAKY_RELU": "1", "USE_BYTE_WEIGHT": "1", "USE_NGRAM_BIAS": "1", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "STK_full_stack_seed42", "USE_LEAKY_RELU": "1", "USE_BYTE_WEIGHT": "1", "USE_NGRAM_BIAS": "1", "SEED": "42", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
+
   {"name": "T1_bigbatch_full_ngram", "USE_NGRAM_BIAS": "1", "TRAIN_BATCH_TOKENS": "8192", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "T2_hugebatch",           "USE_NGRAM_BIAS": "1", "TRAIN_BATCH_TOKENS": "16384", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"},
 
-  {"name": "BL_baseline_seed1",      "USE_NGRAM_BIAS": "0", "SEED": "1337", "MAX_WALLCLOCK_SECONDS": "300"},
-  {"name": "BL_full_ngram_seed1",    "USE_NGRAM_BIAS": "1", "SEED": "1337", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"}
+  {"name": "REF_baseline_seed1",     "USE_NGRAM_BIAS": "0", "SEED": "1337", "MAX_WALLCLOCK_SECONDS": "300"},
+  {"name": "REF_full_ngram_seed1",   "USE_NGRAM_BIAS": "1", "SEED": "1337", "NGRAM_W_BIGRAM": "0.20", "NGRAM_W_TRIGRAM": "0.20", "NGRAM_W_FOURGRAM": "0.15", "MAX_WALLCLOCK_SECONDS": "300"}
 ]
