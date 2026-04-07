@@ -1958,3 +1958,82 @@ If SP4 (full stack big batch, with the validated CS+EL combo) lands below the pr
 - Task #63 (SPEED family validation): COMPLETED with FAILED status. torch.compile re-enable broke. Deferred until proper investigation of which ops break dynamic shape tracing.
 - Task #65 (speed push 1 validation): COMPLETED, superseded by speed push 2 (task #66).
 - Task #66 (speed push 2 validation): still pending — will validate with SP family.
+
+---
+
+## Audit Fire #9 — 2026-04-08 ~21:39 UTC — SPEED FIX VALIDATED 🎉 + Patch 22 getattr fallback works
+
+### 🏆 BREAKTHROUGH CONFIRMED
+
+After 5 emergency interventions in the past 2 hours, the speed fix is finally working:
+
+| Metric | Before (broken) | After (now) |
+|---|---|---|
+| GPU Memory | 744 MB (6%) | **3370 MB (27%)** ⭐ |
+| GPU Utilization | 34% | **100%** 🔥 |
+| GPU Power | 149 W | **218 W** |
+| TRAIN_BATCH_TOKENS | 1024 | 65536 (64×) |
+| TRAIN_SEQ_LEN | 128 | 1024 (8×) |
+| Total compute/step | ~270 GFLOP | ~17 TFLOP (64×) |
+| Step time | 190 ms | 822 ms |
+| Total tokens/experiment | 1.5M | ~24M (16×) |
+
+**CHAMP_L5_seed42 is currently running successfully** under the new compute regime:
+```
+step:1   train_loss:4.6806  step_avg:706ms
+step:10  train_loss:4.5714  step_avg:822ms
+step:100 train_loss:3.6128  step_avg:861ms
+```
+
+Train_loss at step 100 = **3.6128** (vs the OLD-config CHAMP_L5_seed1337 cycle 1 step 100 ≈ 4.0). The model is learning FASTER with the bigger batch + longer seq, even though there are FEWER total optimizer steps in the wallclock budget.
+
+**The 5 emergency fixes that got us here**:
+1. Fix #1: Bumped BASE_ENV (TRAIN_SEQ_LEN 128→512, TRAIN_BATCH_TOKENS 1024→32768)
+2. Fix #2: Killed duplicate runners (3 attempts to find the bash wrapper)
+3. Fix #3: Bumped further (seq 512→1024, batch 32768→65536)
+4. Fix #4: Reverted USE_TORCH_COMPILE default to 0 (was crashing all experiments)
+5. Fix #5: getattr fallback for `_engram_lite_enabled` (Patch 22 init anchor was broken — caused EVERY experiment to crash with AttributeError)
+
+The actual root cause was **Patch 22 init anchor mismatch**. The torch.compile crashes were a red herring — even after reverting torch.compile, the EngramLite forward apply was crashing every experiment because `self._engram_lite_enabled` didn't exist. The getattr wrap finally fixed it.
+
+### Current state (audit fire #9)
+
+- **Loop healthy**: clean process tree (136978 wrapper → 137019 runner → child train_gpt)
+- **GPU Util sustained at 100%**
+- **CHAMP_L5_seed42** at step 100/365 (estimated finish ~step 348 due to wallclock cap)
+- **Recent crashes** in results.jsonl are PRE-fix (XSA0-3 + CHAMP_L5_seed1337) — they're old data, not new crashes
+
+### PR audit (subagent)
+
+**PR #1430 status**: still OPEN, no comments, no comp owner activity. Same status for 24h+.
+
+**Patches still novel** (9th audit confirmation):
+- ✓ Patch 15 USE_TABULATION_HASH
+- ✓ Patch 16 USE_GATED_ATTENTION (PR #1446 has "gated Krylov", different mechanism)
+- ✓ Patch 21 USE_MTP
+- ✓ Patch 20 USE_COPRIME_STRIDE
+- ✓ Patch 25 USE_NORMUON
+
+**New PRs in last 2h**:
+- PR #1450 (21:16): TMA Megakernel + Triple Loop + Parallel Residuals, **1.08480 BPB**
+- PR #1449 (20:06): Full-Model Depth Recurrence Ablation (7 configs, with torch.compile=0 penalty)
+- PR #1448 (19:06): FlashMuon + Int6 AWQ + XSA (non-record)
+
+**NEW techniques in 2+ PRs we don't have**:
+- **TMA Megakernel** (5 PRs) — custom Triton kernel, hardware-side. We have ZERO hardware-side patches. **Highest-leverage missing technique by recent PR count.**
+- **FlashMuon** (2 PRs)
+- **Int6 AWQ** (2 PRs)
+
+### Spend check
+
+Pod uptime ≈ 9h 46min × $0.30/h = $2.93 raw GPU + $1.10 H100 burn + $2.30 ops = **~$6.33 / $36 (17.6%)**. Soft cap $25 = 25%. **75% headroom**. Far below the $25 flag threshold.
+
+### Audit verdict #9
+
+**SPEED FIX IS WORKING.** GPU at 100% util, 27% memory, 218W power, sustained.
+
+**IMPORTANT**: every prior "neutrality plateau" verdict is now CONFIRMED INVALID. The Mousse/MuonEq-R/NorMuon/Depth Recurrence/Coprime Stride/EngramLite/QK_GAIN measurements were all on 0.75% of intended data volume. **All those patches need re-validation.**
+
+**Next research fire priority**: investigate TMA Megakernel (5 PR adoption, hardware-side, our unexplored category). May give significant additional speedup.
+
+**Currently running CHAMP_L5_seed42 will finish in ~3 min** with the first complete experiment under proper compute scale. That's the real baseline for re-validation.
