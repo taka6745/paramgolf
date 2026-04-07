@@ -1211,6 +1211,53 @@ else:
     else:
         print("  ✗ DEPTH_RECUR apply anchor not found — skipping apply")
 
+# Patch 21: USE_XSA=1 → Exclusive Self Attention (orthogonal projection removal).
+# From arxiv:2603.09078 "Exclusive Self Attention: Orthogonal Projection as an
+# Architectural Inductive Bias" (Feb 2026, Shuangfei Zhai). Used in 100+ open PRs and
+# 4+ MERGED records: PR #1099 (latest, 1.1133), #1019 (1.1147), #478 (1.12676), #287
+# (1.1271), #315 (1.1248), #265 (1.1307). MOST-VALIDATED missing technique we don't have.
+#
+# Math: after standard SDPA produces y (shape B,H,T,D) and we have v (B,Hkv,T,D), remove
+# the component of y that lies along the normalized self-value direction:
+#   v_n = normalize(v, dim=-1)
+#   y_out = y - <y, v_n> * v_n  (per-token, per-head)
+#
+# Effect: removes the "self-attention bias" (cosine sim of output with self-value grows
+# with depth). Forces the model to attend to CONTEXT rather than reconstructing its own
+# position. Reported gain: +0.002 to +0.005 BPB across multiple records.
+#
+# 0 new params. ~2ms/step overhead at all 11 layers (negligible vs ~190ms baseline).
+#
+# Applied INLINE in CausalSelfAttention.forward, AFTER SDPA + GATED_ATTENTION block,
+# BEFORE the transpose/reshape. Anchored on the GATED_ATTENTION-MODIFIED transpose line
+# (Patch 16 runs before Patch 21). This is the all-layers variant ("XSA-all") which is
+# the canonical form used in PR #1099 (latest merged record).
+#
+# Idempotent via XSA_MARKER. Falls back to no-op when env var unset.
+if "XSA_MARKER" in content:
+    print("  ✓ XSA already applied")
+else:
+    # Anchor on the GATED_ATTENTION-modified transpose line which is unique
+    old_xsa = """            y = y * _gate
+        y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)"""
+    new_xsa = """            y = y * _gate
+        # XSA_MARKER: Exclusive Self Attention orthogonal projection (arxiv:2603.09078, PR #1099)
+        if int(os.environ.get("USE_XSA", "0")):
+            # y: (B, H, T, D), v: (B, Hkv, T, D) — handle GQA via grouped reshape
+            _B, _H, _T, _D = y.shape
+            _Hkv = v.size(1)
+            _group = _H // _Hkv
+            _y_g = y.reshape(_B, _Hkv, _group, _T, _D)
+            _vn = F.normalize(v.float(), dim=-1).unsqueeze(2).to(dtype=y.dtype)  # (B, Hkv, 1, T, D)
+            _dot = (_y_g * _vn).sum(dim=-1, keepdim=True)  # (B, Hkv, group, T, 1)
+            y = (_y_g - _dot * _vn).reshape(_B, _H, _T, _D)
+        y = y.transpose(1, 2).contiguous().reshape(bsz, seqlen, dim)"""
+    if old_xsa in content:
+        content = content.replace(old_xsa, new_xsa)
+        print("  ✓ added XSA orthogonal projection")
+    else:
+        print("  ✗ XSA anchor not found — skipping (XSA will be no-op)")
+
 # Patch 18: USE_MUONEQ_R=1 → row-only normalization before Newton-Schulz orthogonalization.
 # From arxiv:2603.28254 "MuonEq: Balancing Before Orthogonalization with Lightweight
 # Equilibration" (Mar 2026). Used in 40+ openai/parameter-golf PRs, top record PR #1260
