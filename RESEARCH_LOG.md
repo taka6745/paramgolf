@@ -1312,3 +1312,59 @@ If QK0 lands at 3.27-3.29 (within champion noise), it's a free addition. If it l
 - **Highest signal-to-effort ratio** of any research fire so far (4 experiments, 0 LOC, no anchor risk)
 
 This is the cleanest possible "port from top record" we've shipped all night. If it works, great. If it doesn't, we lost zero compute on patcher risk.
+
+---
+
+## Audit Fire #6 — 2026-04-08 ~18:55 UTC — sixth consecutive novelty confirmation, PR #1430 stable
+
+### Pod status
+Loop alive (PID 123956 + train_gpt running DR3 cycle 2). 7 hours total uptime since loop start at 11:53 UTC. DR2_recur_block3_3x cycle 2 = 3.3346 (was 3.3326 cycle 1, n=2 mean 3.3336, std 0.0014 — extremely consistent).
+
+### PR #1430 status (task #57)
+- **State**: OPEN (no change for 2+ audits)
+- **Comments**: 0 / Review comments: 0
+- **Comp owner activity**: NONE
+- **Status**: Stable. No engagement since creation 16h ago.
+- **Assessment**: increasingly likely the comp owners will either silently ignore it or eventually revert. Per-Sample SLOT (1536 params per sequence, 196K params total trained on val set) is the kind of "spirit-of-the-rules" violation that comp owners often catch in delayed code review. Continue watching every 2h per task #57.
+
+### Novelty re-verification (subagent — 6th consecutive confirmation)
+
+**Patches 15/16/21 STILL UNCONTESTED across 150+ open + 10 closed PRs**:
+- ✓ Patch 15 USE_TABULATION_HASH (PR #1369 has "gated multi-order hash n-grams" but flagged as negative results, different mechanism)
+- ✓ Patch 16 USE_GATED_ATTENTION (PR #1446 has "gated Krylov" but it's a different mechanism, not our NeurIPS-2025 attention gate)
+- ✓ Patch 21 USE_MTP (zero hits)
+
+**Six consecutive hours of novelty confirmation** = strong evidence of true uncontested status. These 3 patches are our most defensible novelty claims for the final submission, even though all 3 are marginal at our 22M scale.
+
+### New PRs since last audit
+**NONE NEW**. Same lineup as last audit:
+- PR #1446 (LauraGomezjurado, 17:36) — gated Krylov, non-record
+- PR #1445 (X-Abhishek-X, 17:15) — depth recurrence + EMA, 1.0889 record
+- PR #1444 (hypnoastic, 14:37) — LeakyReLU GPTQ-lite, non-record
+- PR #1443 (ByteJEPA, 1.3496) — non-record
+- PR #1441 (System Optimizations, in-dev)
+
+The comp PR creation rate has slowed dramatically — possibly because most active competitors are running long H100 evaluations rather than rapid iteration.
+
+### Spend check
+Pod uptime ≈ 7h × $0.30/h = $2.10, plus subagent + ops ≈ **~$3.55 total / $36 budget (10% utilization)**. Soft cap $25 = 14% utilization. **86% headroom**.
+
+### Audit verdict #6
+
+**3 patches still novel** (15, 16, 21). Stack is stable, all four post-fire-9 ports (Mousse/MuonEq-R/Depth Recurrence/QK_GAIN) confirmed as **neutral at our scale** — none beat the champion noise band but none catastrophically fail. **The "neutrality plateau" at 3.27-3.30 is the empirical ceiling for training-time tweaks at 22M / 1500 steps**.
+
+### Strategic implication: PIVOT WINDOW
+
+After 13 research fires and 6 audits, the picture is now clear:
+- **Architectural patches**: exhausted (gated attention, tab hash, parallel residuals — all marginal)
+- **Optimizer patches**: exhausted (Mousse, MuonEq-R — neutral within noise)
+- **Training-time hyperparameters**: exhausted (QK_GAIN=5.0, depth recurrence — neutral)
+- **Data-side patches**: 1 candidate (coprime stride, task #58, deferred due to upstream stateless loader)
+- **Eval-time patches**: 3 candidates (EMA, N-gram Tilt, INT6 GPTQ — H100 escalation bundle)
+
+**Best remaining moves** (in order of expected value):
+1. **H100 escalation** of CHAMP_L4_seed42 + EngramLite stack with the 3-spec eval bundle (EMA + Tilt + INT6 GPTQ). Expected: +0.003 to +0.008 BPB on top of our current ~1.10-1.11 baseline.
+2. **Coprime stride implementation** (task #58) — only data-side direction with strong port evidence. ~60-100 LOC rewrite of DistributedTokenLoader. Risky but potentially +0.01-0.02 BPB.
+3. **BPE-8192 ngram tables build** (task #49) — would let us A/B SP-1024 vs BPE-8192 with our existing n-gram bias stack. The top open PRs (#1437, #1423) all use SP8192.
+
+**Recommendation**: next 1-2 research fires should attempt EITHER coprime stride OR BPE-8192 build, not more training-time tweaks. The existing loop will continue cycling through the cycle 2/3 of the queue to consolidate multi-seed data on existing patches.
