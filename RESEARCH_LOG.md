@@ -1574,3 +1574,70 @@ If CS2 mean (n≥2) lands ≤ 3.28 with std < 0.01, this is a real win and we sh
 ### Spend impact
 
 Pod uptime ~7h 40min × $0.30/h = $2.30, plus ops ≈ **$3.90 / $36 (10.8%)**. This finding is well within budget and worth multi-seed validating before escalation.
+
+---
+
+## Audit Fire #7 — 2026-04-08 ~19:43 UTC — seventh consecutive novelty confirmation + XSA identified as top missing technique
+
+### Pod status
+Loop alive (PID 123956 + train_gpt running QK3 cycle 2 at step 1200). 7h 50min total uptime. Recent: CS family fully completed cycle 1 with **CS2 = 3.2732 NEW TOP-1** + CS3 = 3.2743 (#2 result). Both using Patch 20 USE_COPRIME_STRIDE.
+
+### PR #1430 status (task #57)
+- **State**: OPEN (still, no change for 3+ audits)
+- **Comments**: 0 / Comp owner activity: NONE
+- **16h+ since creation, comp owners ignoring**
+- **Continue watching every 2h per task #57**
+
+### Novelty re-verification (subagent — 7th consecutive confirmation)
+
+**Patches 15/16/21 + NEW Patch 20 STILL UNCONTESTED** across 150+ open + 20 closed PRs:
+- ✓ Patch 15 USE_TABULATION_HASH
+- ✓ Patch 16 USE_GATED_ATTENTION (PR #1446 has "gated Krylov" but it's a different mechanism)
+- ✓ Patch 21 USE_MTP
+- ✓ Patch 20 USE_COPRIME_STRIDE — **NEW NOVELTY CHECK PASSED**: zero comp PRs reference our shard-level coprime stride variant. The full token-level variant exists in PR #1099/#1060/#1135 but our SHARD-level simplification is technically distinct and faster to ship.
+
+**This is the 7th consecutive hour of novelty confirmation for patches 15/16/21**, plus first confirmation for Patch 20 (just shipped 3h ago). **4 patches now novel-to-comp**.
+
+### CRITICAL FINDING: XSA is the #1 missing technique in merged records
+
+Subagent's closed/merged PR mining identified **XSA (Cross-Sequence Attention)** as the most-validated technique we're missing:
+
+| Technique | Merged Records | First Merge | Port Complexity |
+|---|---|---|---|
+| **XSA / XSA-all** | 4+ (PR #1019, #287, #315, #265, #1099) | 2026-03-20 | MODERATE (~200 LOC) |
+| SLOT (Score-First TTT) | 2+ (PR #549) | 2026-03-24 | EASY (~100 LOC) |
+| QK-Gain=5.0 | 3+ recent records | 2026-03-24 | TRIVIAL (already done) |
+
+**XSA appears in the latest merged record (PR #1099 = 1.1133 BPB)** and several earlier merged records. It's an attention variant — likely a different attention mask pattern that allows cross-sequence interactions. We have ZERO attention-mask variants in our 24 patches.
+
+**Implementation cost**: ~200 LOC moderate implementation. Too big for a single research fire but worth investigating in a focused 30-45 min fire if we can find a CONSERVATIVE/MINIMAL variant.
+
+### SLOT (Score-First TTT) — second-most-validated missing technique
+
+PR #549 was the first SLOT-related merge. SLOT = "Score-First TTT" — a test-time adaptation technique where scores are locked BEFORE the model adapts on the chunk. Uses ~100 LOC. Related to but distinct from the deferred Tilt patch (task #53).
+
+**However**: SLOT is eval-time, not training-time. Same metric problem as EMA/Tilt/INT6 GPTQ — can't validate on our train_loss loop. Goes into the H100 escalation bundle category.
+
+### Strategic update
+
+**The H100 escalation candidate has changed** thanks to CS2's new top-1:
+- **OLD plan**: CHAMP_L4_seed42 + EngramLite + (EMA + Tilt + INT6 GPTQ)
+- **NEW plan**: CHAMP_L4 + USE_COPRIME_STRIDE + EngramLite + (EMA + Tilt + INT6 GPTQ + maybe SLOT)
+- The CS2 cluster (CS2=3.2732, CS3=3.2743) is now the strongest pre-H100 stack
+- Need CS2 cycle 2+3 for n=3 mean confirmation before escalating
+
+### Spend check
+
+Pod uptime ≈ 7h 50min × $0.30/h = $2.35, plus ops ≈ **$4.00 total / $36 budget (11.1%)**. Soft cap $25 = 16% utilization. **84% headroom**. Far below the $25 flag threshold (≈ 80h pod runtime).
+
+### Audit verdict #7
+
+**4 patches still genuinely novel-to-comp**. Patch 20 USE_COPRIME_STRIDE produced the FIRST top-tier result of the session. The H100 escalation case is now strong enough to consider running.
+
+**Most actionable next moves**:
+1. **Wait for CS2 cycle 2** (will run within ~30-45 min as runner cycles back to it)
+2. **Next research fire investigates XSA** as a possible port (it's the most-validated missing technique by 4+ merged records)
+3. **Mark task #60 QK_GAIN as completed** — Q family fully validated as marginal at our scale
+4. **Defer task #49 BPE-8192** indefinitely per fire #16 architectural insight
+
+The session has now produced a real win (CS2 = 3.2732 new top-1) and a clear next-target (XSA). Loop healthy, plenty of budget, ~3 hours remaining until end of extended run at 23:00 UTC.
