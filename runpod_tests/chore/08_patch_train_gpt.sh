@@ -1088,6 +1088,68 @@ else:
         content = content.replace(old_loop, new_loop)
         print("  ✓ added WAVELET calls in GPT.forward")
 
+# Patch 20: USE_COPRIME_STRIDE=1 → shard-level coprime stride sampling in TokenStream.
+# Inspired by PR #1099 (latest merged record) and PR #1060/#1135 which use TOKEN-level
+# coprime stride sampling. The full token-level variant requires a 60+ LOC rewrite of
+# TokenStream + DistributedTokenLoader (random access support, cumulative shard offset
+# maps, etc.). This patch ships a CONSERVATIVE shard-level variant: instead of cycling
+# shards in order 0->1->2->...->N-1, cycle them with a coprime stride
+# (e.g., stride=13 with N=100 shards gives 0->13->26->39->...->91->4->17->...).
+#
+# Mechanism: nearby training steps see DIFFERENT shards rather than topically-similar
+# adjacent shards. Provides gradient diversity at the shard granularity. Smaller benefit
+# than token-level (~25% as much based on PR #1099 reports) but ~5x cheaper to ship.
+#
+# Reference: number theory → if gcd(stride, N) == 1, the iteration covers all N shards
+# before repeating, achieving max spacing diversity.
+#
+# Idempotent via COPRIME_STRIDE_MARKER. Anchored on the unique TokenStream.__init__ tail
+# and the unique _advance_file() body — both invariant under all 24 existing patches
+# (none touch TokenStream).
+if "COPRIME_STRIDE_MARKER" in content:
+    print("  ✓ coprime stride already applied")
+else:
+    # 1) Init: add stride state at the end of TokenStream.__init__
+    old_cs_init = """        self.file_idx = 0
+        self.tokens = load_data_shard(self.files[0])
+        self.pos = 0"""
+    new_cs_init = """        self.file_idx = 0
+        self.tokens = load_data_shard(self.files[0])
+        self.pos = 0
+        # COPRIME_STRIDE_MARKER: optional shard-level coprime stride sampling
+        self._coprime_stride = 1
+        if int(os.environ.get("USE_COPRIME_STRIDE", "0")) and len(self.files) > 1:
+            import math as _math
+            import random as _random
+            _rng = _random.Random(int(os.environ.get("SEED", "1337")))
+            for _ in range(64):
+                _s = _rng.randint(1, len(self.files) - 1)
+                if _math.gcd(_s, len(self.files)) == 1:
+                    self._coprime_stride = _s
+                    break
+            print(f"COPRIME_STRIDE: shard-level stride={self._coprime_stride} for N={len(self.files)} shards")"""
+    if old_cs_init in content:
+        content = content.replace(old_cs_init, new_cs_init)
+        print("  ✓ added COPRIME_STRIDE init in TokenStream.__init__")
+    else:
+        print("  ✗ COPRIME_STRIDE init anchor not found — skipping")
+
+    # 2) Apply: modify _advance_file to use the coprime stride instead of +1
+    old_cs_apply = """    def _advance_file(self) -> None:
+        self.file_idx = (self.file_idx + 1) % len(self.files)
+        self.tokens = load_data_shard(self.files[self.file_idx])
+        self.pos = 0"""
+    new_cs_apply = """    def _advance_file(self) -> None:
+        # COPRIME_STRIDE_MARKER apply: use coprime stride if enabled, else stride=1
+        self.file_idx = (self.file_idx + self._coprime_stride) % len(self.files)
+        self.tokens = load_data_shard(self.files[self.file_idx])
+        self.pos = 0"""
+    if old_cs_apply in content:
+        content = content.replace(old_cs_apply, new_cs_apply)
+        print("  ✓ added COPRIME_STRIDE apply in _advance_file")
+    else:
+        print("  ✗ COPRIME_STRIDE apply anchor not found — skipping")
+
 # Patch 19: USE_DEPTH_RECURRENCE=1 → re-run middle encoder blocks N times each.
 # From PR #1437 (1.0809 BPB), PR #1445 (1.0889 BPB), PR #1331, PR #1421, PR #1260, PR #1334,
 # PR #1290, PR #1204 — 8+ merged records use depth recurrence. Conservative variant ships

@@ -1368,3 +1368,89 @@ After 13 research fires and 6 audits, the picture is now clear:
 3. **BPE-8192 ngram tables build** (task #49) — would let us A/B SP-1024 vs BPE-8192 with our existing n-gram bias stack. The top open PRs (#1437, #1423) all use SP8192.
 
 **Recommendation**: next 1-2 research fires should attempt EITHER coprime stride OR BPE-8192 build, not more training-time tweaks. The existing loop will continue cycling through the cycle 2/3 of the queue to consolidate multi-seed data on existing patches.
+
+---
+
+## Research Fire #15 — 2026-04-08 (cron min :08, Track A → coprime stride implementation) — Patch 20 USE_COPRIME_STRIDE SHIPPED (shard-level variant)
+
+**Subject**: Audit fire #6 explicitly recommended "next 1-2 research fires should attempt coprime stride OR BPE-8192 build". Coprime stride (task #58) was deferred in fire #12 because the upstream `DistributedTokenLoader` is stateless and a token-level rewrite needs 60+ LOC.
+
+### Subagent finding (TokenStream code extraction)
+
+Pulled exact upstream `class TokenStream` code (lines 446-474):
+- ~28 lines total
+- Pure sequential reader: `__init__` loads first shard, `_advance_file()` cycles to next shard via `(file_idx + 1) % len(files)`, `take(n)` reads n tokens spanning shards transparently
+- **Zero random-access methods** — no seek, no take_at, no offset map
+- State: `files`, `file_idx`, `tokens` (current shard data), `pos` (offset within shard)
+
+**Subagent verdict**: Token-level coprime stride needs 50-65 LOC rewrite — confirmed unfeasible as a small patch.
+
+### My pivot: SHARD-LEVEL coprime stride (much simpler)
+
+Instead of token-level stride (PR #1099's approach), implement SHARD-level stride. Currently `_advance_file()` does `file_idx = (file_idx + 1) % N`. Coprime variant does `file_idx = (file_idx + s) % N` where `gcd(s, N) = 1`.
+
+**Effect**: with N=100 shards and stride=13, the cycle order becomes 0→13→26→39→52→65→78→91→4→17→30→... covering all 100 shards before repeating, but with maximum spacing diversity. Nearby training steps see TOPICALLY DIFFERENT shards instead of adjacent (similar) ones.
+
+**Estimated benefit at our scale**: ~25% of token-level coprime stride's reported gain (per PR #1099's logic that finer granularity = more benefit). Even if PR #1099 reports -0.01 BPB, a 25% fraction would be -0.0025 BPB. Within noise band but worth measuring.
+
+### Patch 20 USE_COPRIME_STRIDE — code shipped this fire (~13 LOC)
+
+Two anchor points in TokenStream class:
+
+1. **Init** (after `self.pos = 0` in `__init__`):
+```python
+# COPRIME_STRIDE_MARKER: optional shard-level coprime stride sampling
+self._coprime_stride = 1
+if int(os.environ.get("USE_COPRIME_STRIDE", "0")) and len(self.files) > 1:
+    import math as _math
+    import random as _random
+    _rng = _random.Random(int(os.environ.get("SEED", "1337")))
+    for _ in range(64):
+        _s = _rng.randint(1, len(self.files) - 1)
+        if _math.gcd(_s, len(self.files)) == 1:
+            self._coprime_stride = _s
+            break
+    print(f"COPRIME_STRIDE: shard-level stride={self._coprime_stride} for N={len(self.files)} shards")
+```
+
+2. **Apply** (modify `_advance_file()`):
+```python
+def _advance_file(self) -> None:
+    # COPRIME_STRIDE_MARKER apply: use coprime stride if enabled, else stride=1
+    self.file_idx = (self.file_idx + self._coprime_stride) % len(self.files)
+    self.tokens = load_data_shard(self.files[self.file_idx])
+    self.pos = 0
+```
+
+13 LOC actual change. Idempotent via marker, gated by env var, falls back to stride=1 (current behavior). Both anchors are unique within TokenStream class — none of the existing 24 patches touch this class (verified via grep).
+
+### Why ship the simpler variant
+
+The full token-level coprime stride from PR #1099 is more powerful but requires 60+ LOC + structural rewrite of TokenStream. The shard-level variant:
+- ~13 LOC, near-zero risk
+- Same TYPE of effect (gradient diversity from non-adjacent samples)
+- Smaller magnitude but free to test
+- If it works, we know the technique direction is real and can invest in token-level later
+- If it doesn't, we've spent 0 cycles on a risky 60-LOC patch
+
+### Experiments queued (4 added → queue is now 40)
+
+- **CS0_coprime_alone** — coprime stride + L5 weights champion config (seed 1337)
+- **CS1_coprime_seed42** — multi-seed validation
+- **CS2_coprime_L4weights** — L4 weights variant
+- **CS3_coprime_with_engram** — stacked test with EngramLite
+
+### Validation plan
+
+Patch deploys cleanly if anchors match. Runner pulls within 5 min, CS family fires within ~30 min. Each experiment ~5 min. Full CS family verdict in ~1 hour.
+
+If CS family lands in 3.27-3.30 band (within champion noise), shard-level coprime stride works at our scale. If it lands above 3.31, the technique only matters at larger scales OR requires the token-level variant. Either way, clean empirical answer.
+
+### What this fire produced
+
+- **Patch 20 USE_COPRIME_STRIDE shipped** — first DATA-side patch in our 24+ patch stack
+- **4 CS experiments queued** for loop validation
+- **Smallest possible variant** (13 LOC) of a high-value port
+- **First non-architectural, non-optimizer, non-eval patch** — testing a completely new vector
+
+The data-side direction has 26 PR records of evidence for the full variant. Even if our shard-level version is only 25% as effective, that's still measurable and orthogonal to all existing patches.
