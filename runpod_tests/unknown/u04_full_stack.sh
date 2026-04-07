@@ -7,7 +7,6 @@
 # This is the maximum-effort single-seed run. Validates everything stacks.
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
@@ -25,11 +24,11 @@ echo "  - Score-First TTT (LoRA on last 2 layers)"
 echo "  - Per-layer mixed precision GPTQ + Lloyd-Max codebook"
 echo
 
-mkdir -p logs/u04
+mkdir -p runpod_tests/logs/u04
 
 # Final config — adjust based on u01/u02/u03 results
 NUM_LAYERS=${NUM_LAYERS:-11}
-MLP_EXPANSION=${MLP_EXPANSION:-3}
+MLP_MULT=${MLP_MULT:-3}
 USE_PROGRESSIVE=${USE_PROGRESSIVE:-1}  # set to 0 if u02 showed it doesn't help
 
 env \
@@ -58,28 +57,27 @@ env \
     \
     NUM_LAYERS=$NUM_LAYERS \
     MODEL_DIM=512 \
-    MLP_EXPANSION=$MLP_EXPANSION \
-    SEQ_LEN=2048 \
+    MLP_MULT=$MLP_MULT \
     QK_GAIN=4.0 \
     USE_XSA=1 \
     XSA_LAYERS=4 \
     \
+    TRAIN_SEQ_LEN=128 \
     TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 \
-    GRAD_ACCUM_STEPS=1 \
+    SKIP_FINAL_EVAL=1 \
     WARMUP_STEPS=10 \
     ITERATIONS=1000000 \
     MAX_WALLCLOCK_SECONDS=180 \
     TRAIN_LOG_EVERY=200 \
-    \
-     \
-     \
-    python3 train_gpt.py 2>&1 | tee logs/u04/full_stack.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u04/full_stack.log
 
 # Extract final score
 echo
 echo "=== U04 RESULT ==="
-FINAL_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u04/full_stack.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-ARTIFACT_SIZE=$(grep 'Total submission size' logs/u04/full_stack.log | grep -oE '[0-9]+' | head -1)
+FINAL_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u04/full_stack.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+FINAL_TLOSS=$(grep 'step:' runpod_tests/logs/u04/full_stack.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+ARTIFACT_SIZE=$(grep 'Total submission size' runpod_tests/logs/u04/full_stack.log | grep -oE '[0-9]+' | head -1)
+echo "Final train_loss: $FINAL_TLOSS"
 
 echo "Final val_bpb:    $FINAL_BPB"
 echo "Artifact size:    $ARTIFACT_SIZE bytes"

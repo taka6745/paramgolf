@@ -18,7 +18,6 @@
 # REQUIRES: u07 must have passed (GLA installed)
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
@@ -34,16 +33,16 @@ python3 -c "import fla" 2>/dev/null || {
 }
 
 # Verify u07 showed GLA isn't broken
-if [ ! -f logs/u07/B_gla.log ]; then
+if [ ! -f runpod_tests/logs/u07/B_gla.log ]; then
     echo "✗ FAIL: u07 not run yet"
     echo "  Run u07_gla_shootout.sh first"
     exit 1
 fi
 
-mkdir -p logs/u08
+mkdir -p runpod_tests/logs/u08
 
 NUM_LAYERS=${NUM_LAYERS:-11}
-MLP_EXPANSION=${MLP_EXPANSION:-3}
+MLP_MULT=${MLP_MULT:-3}
 
 echo "Testing GLA + progressive seq with same training budget."
 echo "Compare against u02_run_B_progressive.log (standard + progressive)."
@@ -51,43 +50,38 @@ echo
 
 env \
     ATTENTION_TYPE=gla \
-    \
     PROGRESSIVE_SEQ=1 \
     PHASE1_SEQ_LEN=128 PHASE1_LR_MULT=25.0 PHASE1_FRACTION=0.85 \
     PHASE2_SEQ_LEN=1024 PHASE1_NGRAM_WEIGHT=0.40 PHASE2_NGRAM_WEIGHT=0.05 \
-    \
     USE_NGRAM_BIAS=1 \
     USE_WAVELET=1 \
     USE_EMA=1 EMA_DECAY=0.997 \
-    \
     NUM_LAYERS=$NUM_LAYERS \
     MODEL_DIM=512 \
-    MLP_EXPANSION=$MLP_EXPANSION \
-    \
+    MLP_MULT=$MLP_MULT \
+    TRAIN_SEQ_LEN=128 \
     TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 \
-    GRAD_ACCUM_STEPS=1 \
     WARMUP_STEPS=10 \
     ITERATIONS=1000000 \
     MAX_WALLCLOCK_SECONDS=180 \
     TRAIN_LOG_EVERY=200 \
-    \
-     \
-     \
-    python3 train_gpt.py 2>&1 | tee logs/u08/gla_progressive.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u08/gla_progressive.log
 
 echo
 echo "=== U08 RESULT ==="
 
 # Count steps achieved
-TOTAL_STEPS=$(grep 'step:' logs/u08/gla_progressive.log | grep -v warmup | tail -1 | grep -oE 'step:[0-9]+' | head -1 | cut -d: -f2)
-GLA_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u08/gla_progressive.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-echo "Steps achieved: $TOTAL_STEPS"
-echo "Final val_bpb: $GLA_BPB"
+TOTAL_STEPS=$(grep 'step:' runpod_tests/logs/u08/gla_progressive.log | grep -v warmup | tail -1 | grep -oE 'step:[0-9]+' | head -1 | cut -d: -f2)
+GLA_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u08/gla_progressive.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+GLA_TLOSS=$(grep 'step:' runpod_tests/logs/u08/gla_progressive.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+echo "Steps achieved:    $TOTAL_STEPS"
+echo "Final train_loss:  $GLA_TLOSS"
+echo "Final val_bpb:     $GLA_BPB"
 
 # Compare with u02 standard + progressive
-if [ -f logs/u02/run_B_progressive.log ]; then
-    STD_STEPS=$(grep 'step:' logs/u02/run_B_progressive.log | grep -v warmup | tail -1 | grep -oE 'step:[0-9]+' | head -1 | cut -d: -f2)
-    STD_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u02/run_B_progressive.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+if [ -f runpod_tests/logs/u02/run_B_progressive.log ]; then
+    STD_STEPS=$(grep 'step:' runpod_tests/logs/u02/run_B_progressive.log | grep -v warmup | tail -1 | grep -oE 'step:[0-9]+' | head -1 | cut -d: -f2)
+    STD_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u02/run_B_progressive.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
     echo
     echo "=== COMPARISON ==="
     echo "u02 (standard + progressive): $STD_STEPS steps, $STD_BPB BPP"

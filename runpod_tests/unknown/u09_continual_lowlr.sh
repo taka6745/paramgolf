@@ -31,10 +31,10 @@ echo "  Run A: single-stage 10 min training (baseline)"
 echo "  Run B: 8 min stage 1 + 2 min stage 2 at matrix_lr/4"
 echo
 
-mkdir -p logs/u09
+mkdir -p runpod_tests/logs/u09
 
 NUM_LAYERS=${NUM_LAYERS:-11}
-MLP_EXPANSION=${MLP_EXPANSION:-3}
+MLP_MULT=${MLP_MULT:-3}
 
 # Detect hardware
 GPU_NAME=$(python3 -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "unknown")
@@ -43,38 +43,38 @@ echo
 
 if [[ "$GPU_NAME" == *"3060"* ]] || [[ "$GPU_NAME" == *"3080"* ]] || [[ "$GPU_NAME" == *"4070"* ]]; then
     BATCH=1024
-    GA=8
     STAGE1_WALL=120  # 2 min
     STAGE2_WALL=30   # 30 sec
     TOTAL_WALL=150
     echo "Cheap GPU detected — running short test (2.5 min total)"
 elif [[ "$GPU_NAME" == *"H100"* ]] || [[ "$GPU_NAME" == *"A100"* ]]; then
     BATCH=524288
-    GA=1
     STAGE1_WALL=480  # 8 min
     STAGE2_WALL=120  # 2 min
     TOTAL_WALL=600   # 10 min
     echo "Real GPU detected — running full 10 min test"
 else
-    BATCH=4096
-    GA=1
+    BATCH=8192
     STAGE1_WALL=240
     STAGE2_WALL=60
     TOTAL_WALL=300
     echo "Unknown GPU, running medium test"
 fi
 
+# NOTE: GRAD_ACCUM_STEPS env is ignored — train_gpt.py hardcodes 8//world_size.
+# microbatch = TRAIN_BATCH_TOKENS / 8 must be >= TRAIN_SEQ_LEN.
 COMMON="
 NUM_LAYERS=$NUM_LAYERS
 MODEL_DIM=512
-MLP_EXPANSION=$MLP_EXPANSION
+MLP_MULT=$MLP_MULT
+TRAIN_SEQ_LEN=128
 TRAIN_BATCH_TOKENS=$BATCH
-GRAD_ACCUM_STEPS=$GA
+VAL_BATCH_SIZE=131072
+VAL_LOSS_EVERY=0
+SKIP_FINAL_EVAL=1
 WARMUP_STEPS=10
 ITERATIONS=1000000
 TRAIN_LOG_EVERY=200
-TOKENIZER_PATH=./data/tokenizers/sp_bpe_1024.model
-DATA_PATH=./data/datasets/fineweb10B_sp1024
 "
 
 # === Run A: single-stage baseline ===
@@ -83,7 +83,7 @@ echo "--- Run A: SINGLE-STAGE BASELINE (${TOTAL_WALL}s straight) ---"
 env $COMMON \
     MAX_WALLCLOCK_SECONDS=$TOTAL_WALL \
     MATRIX_LR=0.04 \
-    python3 train_gpt.py 2>&1 | tee logs/u09/run_A_single.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u09/run_A_single.log
 
 # === Run B Stage 1: normal LR for STAGE1_WALL ===
 echo
@@ -91,8 +91,8 @@ echo "--- Run B Stage 1: ${STAGE1_WALL}s at matrix_lr=0.04 ---"
 env $COMMON \
     MAX_WALLCLOCK_SECONDS=$STAGE1_WALL \
     MATRIX_LR=0.04 \
-    SAVE_CHECKPOINT=logs/u09/stage1_checkpoint.pt \
-    python3 train_gpt.py 2>&1 | tee logs/u09/run_B_stage1.log
+    SAVE_CHECKPOINT=runpod_tests/logs/u09/stage1_checkpoint.pt \
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u09/run_B_stage1.log
 
 # === Run B Stage 2: low LR continual ===
 echo
@@ -100,15 +100,21 @@ echo "--- Run B Stage 2: ${STAGE2_WALL}s at matrix_lr=0.01 (4x lower) ---"
 env $COMMON \
     MAX_WALLCLOCK_SECONDS=$STAGE2_WALL \
     MATRIX_LR=0.01 \
-    LOAD_CHECKPOINT=logs/u09/stage1_checkpoint.pt \
-    python3 train_gpt.py 2>&1 | tee logs/u09/run_B_stage2.log
+    LOAD_CHECKPOINT=runpod_tests/logs/u09/stage1_checkpoint.pt \
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u09/run_B_stage2.log
 
 # === Compare ===
 echo
 echo "=== U09 RESULTS ==="
-A_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u09/run_A_single.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-B_STAGE1_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u09/run_B_stage1.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-B_STAGE2_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u09/run_B_stage2.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+A_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u09/run_A_single.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+B_STAGE1_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u09/run_B_stage1.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+B_STAGE2_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u09/run_B_stage2.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+A_TLOSS=$(grep 'step:' runpod_tests/logs/u09/run_A_single.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+B1_TLOSS=$(grep 'step:' runpod_tests/logs/u09/run_B_stage1.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+B2_TLOSS=$(grep 'step:' runpod_tests/logs/u09/run_B_stage2.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+echo "Run A train_loss:        $A_TLOSS"
+echo "Run B Stage 1 train_loss: $B1_TLOSS"
+echo "Run B Stage 2 train_loss: $B2_TLOSS"
 
 echo "Run A (single-stage):    val_bpb = $A_BPB"
 echo "Run B Stage 1 only:      val_bpb = $B_STAGE1_BPB"
@@ -131,7 +137,7 @@ if [ -n "$A_BPB" ] && [ -n "$B_STAGE2_BPB" ]; then
 fi
 
 # Note about checkpointing
-if [ ! -f logs/u09/stage1_checkpoint.pt ]; then
+if [ ! -f runpod_tests/logs/u09/stage1_checkpoint.pt ]; then
     echo
     echo "NOTE: SAVE_CHECKPOINT/LOAD_CHECKPOINT may not be supported by"
     echo "  the unpatched train_gpt.py. If Run B Stage 2 uses a fresh model"

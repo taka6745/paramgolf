@@ -11,7 +11,6 @@
 # REUSES THE TRAINED MODEL FROM u02 — only changes the eval pipeline.
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
@@ -24,37 +23,33 @@ echo "  Run A: standard eval (no cache)"
 echo "  Run B: eval cache + hedge mixer + sliding window"
 echo
 
-mkdir -p logs/u03
+mkdir -p runpod_tests/logs/u03
 
 # Use the SAME training config as u02 winner
 NUM_LAYERS=${NUM_LAYERS:-11}
-MLP_EXPANSION=${MLP_EXPANSION:-3}
+MLP_MULT=${MLP_MULT:-3}
 
 # Verify u02 ran (we need a trained model)
-if [ ! -f logs/u02/run_B_progressive.log ]; then
-    echo "✗ u02 not run yet. Run u02_progressive_seq.sh first."
-    exit 1
+if [ ! -f runpod_tests/logs/u02/run_B_progressive.log ]; then
+    echo "△ WARNING: u02 not run yet — running u03 standalone (no shared model)."
 fi
 
-# === Run A: Standard eval (uses model trained in u02 Run B) ===
+# === Run A: Standard eval (no cache) ===
 echo
 echo "--- Run A: STANDARD EVAL (no cache) ---"
 USE_EVAL_CACHE=0 \
 USE_HEDGE_MIXER=0 \
 USE_SLIDING_WINDOW=0 \
-\
 PROGRESSIVE_SEQ=1 \
 PHASE1_SEQ_LEN=128 PHASE1_LR_MULT=25.0 PHASE1_FRACTION=0.85 \
 PHASE2_SEQ_LEN=1024 PHASE1_NGRAM_WEIGHT=0.40 PHASE2_NGRAM_WEIGHT=0.05 \
-\
-NUM_LAYERS=$NUM_LAYERS MODEL_DIM=512 MLP_EXPANSION=$MLP_EXPANSION \
-TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 GRAD_ACCUM_STEPS=1 \
+NUM_LAYERS=$NUM_LAYERS MODEL_DIM=512 MLP_MULT=$MLP_MULT \
+TRAIN_SEQ_LEN=128 \
+TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 \
 WARMUP_STEPS=10 \
 ITERATIONS=1000000 MAX_WALLCLOCK_SECONDS=180 \
 TRAIN_LOG_EVERY=200 \
- \
- \
-python3 train_gpt.py 2>&1 | tee logs/u03/run_A_no_cache.log
+python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u03/run_A_no_cache.log
 
 # === Run B: With eval cache + hedge mixer ===
 echo
@@ -65,25 +60,26 @@ USE_HEDGE_MIXER=1 \
 HEDGE_ETA=0.1 \
 USE_SLIDING_WINDOW=1 \
 SLIDING_STRIDE=512 \
-\
 PROGRESSIVE_SEQ=1 \
 PHASE1_SEQ_LEN=128 PHASE1_LR_MULT=25.0 PHASE1_FRACTION=0.85 \
 PHASE2_SEQ_LEN=1024 PHASE1_NGRAM_WEIGHT=0.40 PHASE2_NGRAM_WEIGHT=0.05 \
-\
-NUM_LAYERS=$NUM_LAYERS MODEL_DIM=512 MLP_EXPANSION=$MLP_EXPANSION \
-TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 GRAD_ACCUM_STEPS=1 \
+NUM_LAYERS=$NUM_LAYERS MODEL_DIM=512 MLP_MULT=$MLP_MULT \
+TRAIN_SEQ_LEN=128 \
+TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1 \
 WARMUP_STEPS=10 \
 ITERATIONS=1000000 MAX_WALLCLOCK_SECONDS=180 \
 TRAIN_LOG_EVERY=200 \
- \
- \
-python3 train_gpt.py 2>&1 | tee logs/u03/run_B_with_cache.log
+python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u03/run_B_with_cache.log
 
 # === Compare ===
 echo
 echo "=== COMPARISON ==="
-A_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u03/run_A_no_cache.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
-B_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' logs/u03/run_B_with_cache.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+A_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u03/run_A_no_cache.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+B_BPB=$(grep 'final_int8_zlib_roundtrip val_loss' runpod_tests/logs/u03/run_B_with_cache.log | grep -oE 'val_bpb:[0-9.]+' | head -1 | cut -d: -f2)
+A_TLOSS=$(grep 'step:' runpod_tests/logs/u03/run_A_no_cache.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+B_TLOSS=$(grep 'step:' runpod_tests/logs/u03/run_B_with_cache.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+echo "Run A train_loss: $A_TLOSS"
+echo "Run B train_loss: $B_TLOSS"
 
 echo "Run A (no cache):     val_bpb = $A_BPB"
 echo "Run B (with cache):   val_bpb = $B_BPB"

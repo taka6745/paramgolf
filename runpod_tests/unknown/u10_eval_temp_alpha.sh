@@ -34,27 +34,27 @@ echo
 echo "Train ONE model, then run 4 eval variants on it."
 echo
 
-mkdir -p logs/u10
+mkdir -p runpod_tests/logs/u10
 
 NUM_LAYERS=${NUM_LAYERS:-11}
-MLP_EXPANSION=${MLP_EXPANSION:-3}
+MLP_MULT=${MLP_MULT:-3}
 
 GPU_NAME=$(python3 -c "import torch; print(torch.cuda.get_device_name(0))" 2>/dev/null || echo "unknown")
 echo "GPU: $GPU_NAME"
 
 if [[ "$GPU_NAME" == *"3060"* ]] || [[ "$GPU_NAME" == *"3080"* ]] || [[ "$GPU_NAME" == *"4070"* ]]; then
     BATCH=1024
-    GA=8
     WALL=120
 elif [[ "$GPU_NAME" == *"H100"* ]] || [[ "$GPU_NAME" == *"A100"* ]]; then
     BATCH=524288
-    GA=1
     WALL=600
 else
-    BATCH=4096
-    GA=1
+    BATCH=8192
     WALL=300
 fi
+
+# NOTE: GRAD_ACCUM_STEPS env is ignored — train_gpt.py hardcodes 8//world_size.
+# microbatch = TRAIN_BATCH_TOKENS / 8 must be >= TRAIN_SEQ_LEN.
 
 # === Train the model ONCE ===
 echo
@@ -62,17 +62,18 @@ echo "--- Training model (wallclock=${WALL}s) ---"
 env \
     NUM_LAYERS=$NUM_LAYERS \
     MODEL_DIM=512 \
-    MLP_EXPANSION=$MLP_EXPANSION \
+    MLP_MULT=$MLP_MULT \
+    TRAIN_SEQ_LEN=128 \
     TRAIN_BATCH_TOKENS=$BATCH \
-    GRAD_ACCUM_STEPS=$GA \
+    VAL_BATCH_SIZE=131072 \
+    VAL_LOSS_EVERY=0 \
+    SKIP_FINAL_EVAL=1 \
     WARMUP_STEPS=10 \
     ITERATIONS=1000000 \
     MAX_WALLCLOCK_SECONDS=$WALL \
     TRAIN_LOG_EVERY=200 \
-    TOKENIZER_PATH=./data/tokenizers/sp_bpe_1024.model \
-    DATA_PATH=./data/datasets/fineweb10B_sp1024 \
-    SAVE_FINAL_CHECKPOINT=logs/u10/trained.pt \
-    python3 train_gpt.py 2>&1 | tee logs/u10/train.log
+    SAVE_FINAL_CHECKPOINT=runpod_tests/logs/u10/trained.pt \
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u10/train.log
 
 # === Run 4 eval variants ===
 declare -a CONFIGS=(
@@ -94,15 +95,14 @@ for CONFIG in "${CONFIGS[@]}"; do
         EVAL_ONLY=1 \
         EVAL_NGRAM_ALPHA=$ALPHA \
         EVAL_TEMPERATURE=$TEMP \
-        LOAD_CHECKPOINT=logs/u10/trained.pt \
+        LOAD_CHECKPOINT=runpod_tests/logs/u10/trained.pt \
+        TRAIN_SEQ_LEN=128 \
         TRAIN_BATCH_TOKENS=$BATCH \
-        GRAD_ACCUM_STEPS=$GA \
+        VAL_BATCH_SIZE=131072 \
         NUM_LAYERS=$NUM_LAYERS \
         MODEL_DIM=512 \
-        MLP_EXPANSION=$MLP_EXPANSION \
-        TOKENIZER_PATH=./data/tokenizers/sp_bpe_1024.model \
-        DATA_PATH=./data/datasets/fineweb10B_sp1024 \
-        python3 train_gpt.py 2>&1 | tee logs/u10/eval_${NAME}.log
+        MLP_MULT=$MLP_MULT \
+        python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u10/eval_${NAME}.log
 done
 
 # === Compare ===
@@ -120,7 +120,7 @@ BPB_VALUES=()
 
 for i in "${!NAMES[@]}"; do
     NAME="${NAMES[$i]}"
-    BPB=$(grep 'val_bpb' logs/u10/eval_${NAME}.log 2>/dev/null | grep -oE 'val_bpb:[0-9.]+' | tail -1 | cut -d: -f2)
+    BPB=$(grep 'val_bpb' runpod_tests/logs/u10/eval_${NAME}.log 2>/dev/null | grep -oE 'val_bpb:[0-9.]+' | tail -1 | cut -d: -f2)
     BPB_VALUES+=("$BPB")
     case $NAME in
         baseline)   ALPHA="0.0";  TEMP="1.0"  ;;

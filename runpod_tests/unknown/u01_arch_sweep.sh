@@ -49,7 +49,7 @@ run_config() {
     env $COMMON \
         NUM_LAYERS=$LAYERS \
         MODEL_DIM=512 \
-        MLP_EXPANSION=$EXPANSION \
+        MLP_MULT=$EXPANSION \
         python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u01/config_${NAME}.log
 }
 
@@ -69,7 +69,7 @@ for NAME in A B C D; do
 done
 
 echo
-echo "Pick the WINNER and use those NUM_LAYERS / MLP_EXPANSION for u02-u05"
+echo "Pick the WINNER and use those NUM_LAYERS / MLP_MULT for u02-u05"
 echo
 echo "Note: 500 steps on a small GPU is short. The winner here may NOT be the"
 echo "winner at 7000 steps on H100. If A and D are within 0.02 BPP, prefer D"

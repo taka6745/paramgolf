@@ -12,7 +12,6 @@
 # reports ms/step. No quality measurement, just speed.
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
@@ -23,11 +22,15 @@ echo "Measuring ms/step at different (layers, seq_len) configs."
 echo "Each test: 100 steps, no eval. Just ms/step."
 echo
 
-mkdir -p logs/u06
+mkdir -p runpod_tests/logs/u06
 
 GPU_NAME=$(python3 -c "import torch; print(torch.cuda.get_device_name(0))")
 echo "GPU: $GPU_NAME"
 echo
+
+# NOTE: GRAD_ACCUM_STEPS env is ignored — train_gpt.py hardcodes 8//world_size.
+# So microbatch = TRAIN_BATCH_TOKENS / 8. Need TRAIN_BATCH_TOKENS / 8 >= TRAIN_SEQ_LEN.
+# For seq=2048, need batch >= 16384. We use batch=32768 for cheap-GPU friendliness.
 
 run_speed() {
     local NAME=$1
@@ -39,35 +42,35 @@ run_speed() {
     env \
         NUM_LAYERS=$LAYERS \
         MODEL_DIM=512 \
-        MLP_EXPANSION=3 \
-        SEQ_LEN=$SEQ \
+        MLP_MULT=3 \
+        TRAIN_SEQ_LEN=$SEQ \
         TRAIN_BATCH_TOKENS=$BATCH \
-        GRAD_ACCUM_STEPS=1 \
+        VAL_BATCH_SIZE=131072 \
+        VAL_LOSS_EVERY=0 \
+        SKIP_FINAL_EVAL=1 \
         WARMUP_STEPS=10 \
         ITERATIONS=100 \
         MAX_WALLCLOCK_SECONDS=0 \
         TRAIN_LOG_EVERY=10 \
-        TOKENIZER_PATH=./data/tokenizers/fineweb_8192_bpe.model \
-        DATA_PATH=./data/datasets/fineweb10B_bpe8192 \
-        python3 train_gpt.py 2>&1 | tee logs/u06/${NAME}.log | tail -5
+        python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u06/${NAME}.log | tail -5
 
     # Extract step_avg from final step
-    MS=$(grep 'step:100' logs/u06/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | head -1 | cut -d: -f2)
+    MS=$(grep 'step:100' runpod_tests/logs/u06/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | head -1 | cut -d: -f2)
     echo "  → ${MS} ms/step"
     echo
 }
 
 # Phase 1 configs (short seq, large effective batch)
-run_speed "phase1_11L_s128" 11 128 524288
-run_speed "phase1_9L_s128"  9  128 524288
+run_speed "phase1_11L_s128" 11 128 32768
+run_speed "phase1_9L_s128"  9  128 32768
 
 # Phase 2 configs (long seq, smaller batch)
-run_speed "phase2_11L_s1024" 11 1024 524288
-run_speed "phase2_11L_s2048" 11 2048 524288
-run_speed "phase2_9L_s1024"  9  1024 524288
+run_speed "phase2_11L_s1024" 11 1024 32768
+run_speed "phase2_11L_s2048" 11 2048 32768
+run_speed "phase2_9L_s1024"  9  1024 32768
 
 # Standard configs for reference
-run_speed "ref_11L_s1024" 11 1024 524288
+run_speed "ref_11L_s1024" 11 1024 32768
 
 echo
 echo "=== SPEED SUMMARY ==="
@@ -75,7 +78,7 @@ echo
 echo "Config              ms/step  steps in 510s (Phase 1)  steps in 90s (Phase 2)"
 echo "------------------  -------  -----------------------  ----------------------"
 for NAME in phase1_11L_s128 phase1_9L_s128 phase2_11L_s1024 phase2_11L_s2048 phase2_9L_s1024 ref_11L_s1024; do
-    MS=$(grep 'step:100' logs/u06/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | head -1 | cut -d: -f2)
+    MS=$(grep 'step:100' runpod_tests/logs/u06/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | head -1 | cut -d: -f2)
     if [ -n "$MS" ]; then
         STEPS_510=$(python3 -c "print(int(510000 / $MS))")
         STEPS_90=$(python3 -c "print(int(90000 / $MS))")

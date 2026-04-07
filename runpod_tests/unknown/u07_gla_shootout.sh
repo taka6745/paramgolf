@@ -14,7 +14,6 @@
 # REQUIRES: pip install flash-linear-attention
 
 set -e
-cd /workspace/paramgolf
 [ -f .venv/bin/activate ] && source .venv/bin/activate || true
 
 echo "=========================================="
@@ -44,44 +43,42 @@ python3 -c "import fla; print('fla version:', fla.__version__)" || {
 echo "✓ flash-linear-attention installed"
 echo
 
-mkdir -p logs/u07
+mkdir -p runpod_tests/logs/u07
 
 COMMON="
 NUM_LAYERS=11
 MODEL_DIM=512
-MLP_EXPANSION=3
-TRAIN_BATCH_TOKENS=1024 VAL_BATCH_SIZE=131072 VAL_LOSS_EVERY=0 SKIP_FINAL_EVAL=1
-GRAD_ACCUM_STEPS=1
+MLP_MULT=3
+TRAIN_SEQ_LEN=128
+TRAIN_BATCH_TOKENS=1024
+VAL_BATCH_SIZE=131072
+VAL_LOSS_EVERY=0
+SKIP_FINAL_EVAL=1
 WARMUP_STEPS=10
 ITERATIONS=50
 MAX_WALLCLOCK_SECONDS=0
 TRAIN_LOG_EVERY=10
-
-
 "
 
 # === Run A: Standard transformer ===
 echo "--- Run A: STANDARD ATTENTION ---"
 env $COMMON \
     ATTENTION_TYPE=standard \
-    SEQ_LEN=2048 \
-    python3 train_gpt.py 2>&1 | tee logs/u07/A_standard.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u07/A_standard.log
 
 # === Run B: GLA ===
 echo
 echo "--- Run B: GLA ---"
 env $COMMON \
     ATTENTION_TYPE=gla \
-    SEQ_LEN=2048 \
-    python3 train_gpt.py 2>&1 | tee logs/u07/B_gla.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u07/B_gla.log
 
 # === Run C: RWKV-7 ===
 echo
 echo "--- Run C: RWKV-7 ---"
 env $COMMON \
     ATTENTION_TYPE=rwkv7 \
-    SEQ_LEN=2048 \
-    python3 train_gpt.py 2>&1 | tee logs/u07/C_rwkv7.log
+    python3 train_gpt.py 2>&1 | tee runpod_tests/logs/u07/C_rwkv7.log
 
 # === Compare ===
 echo
@@ -93,8 +90,8 @@ printf "%-20s  %12s  %14s\n" "Architecture" "ms/step" "loss@step50"
 printf "%-20s  %12s  %14s\n" "----------------" "------------" "--------------"
 
 for NAME in "A_standard" "B_gla" "C_rwkv7"; do
-    MS=$(grep 'step:50' logs/u07/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | tail -1 | cut -d: -f2)
-    LOSS=$(grep 'step:50' logs/u07/${NAME}.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
+    MS=$(grep 'step:50' runpod_tests/logs/u07/${NAME}.log | grep -oE 'step_avg:[0-9.]+' | tail -1 | cut -d: -f2)
+    LOSS=$(grep 'step:50' runpod_tests/logs/u07/${NAME}.log | grep -oE 'train_loss:[0-9.]+' | tail -1 | cut -d: -f2)
     printf "%-20s  %12s  %14s\n" "$NAME" "${MS:-N/A}" "${LOSS:-N/A}"
 done
 
