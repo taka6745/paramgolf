@@ -1795,3 +1795,69 @@ If it lands on the loop within 30 min, the H100 escalation case becomes overwhel
 Same risk profile as Mousse and MuonEq-R: optimizer-side modification with env var gate. If it doesn't help, the experiments land at ~3.27 (within noise). If it helps, we see a clear improvement on top of the validated CS3 = 3.2595 baseline.
 
 NorMuon is the LAST major Mac-validated optimizer technique we haven't tried.
+
+---
+
+## Audit Fire #8 — 2026-04-08 ~20:40 UTC — DUPLICATE RUNNERS FIXED + speed-fix DEPLOYMENT VERIFIED + Patch 21 XSA no longer novel
+
+### Critical operational issue resolved
+
+**Discovered**: The pod had a `bash runpod_tests/loop/run_forever.sh` watcher (PID 123917) running since 11:53 UTC that auto-respawned the experiment_runner whenever it died. When I tried to restart the runner at 20:36 to pick up the new BASE_ENV (TRAIN_SEQ_LEN=512, TRAIN_BATCH_TOKENS=32768), the watcher started a SECOND runner. We had **two runners running simultaneously** for ~4 minutes, both writing to results.jsonl and competing for GPU.
+
+**Fixed at 20:40**: Killed the watcher (123917) and all child processes, then restarted via the wrapper script. Now there's exactly ONE process tree: bash wrapper → runner → train_gpt. Verified via `ps -ef`.
+
+### SPEED4 and SPEED5 CRASHED with steps=0 (torch.compile + XSA/EngramLite incompatibility)
+
+Both SPEED4 (torch.compile + Turbo-Muon + QK_GAIN + Coprime) and SPEED5 (same + XSA + EngramLite) crashed within 17-24 seconds. This was BEFORE the duplicate runner issue. **Patch 2 torch.compile re-enable is incompatible with XSA and/or EngramLite when stacked.** The simpler SPEED1 (torch.compile alone) and SPEED2 (compile + Turbo-Muon) DID complete successfully, so the conflict is specifically with the XSA/EL attention modifications.
+
+**Action for next research fire**: investigate whether torch.compile needs `dynamic=True` or `fullgraph=False` to handle the XSA/EL forward path, OR mark torch.compile as incompatible with XSA/EL and disable it in those experiments.
+
+### Speed-fix deployment status
+
+After the clean restart at 20:40, the new runner is using the updated BASE_ENV. The next experiment (XSA3 cycle 2) will be the first to run with `train_batch_tokens=32768, train_seq_len=512`. **Will verify GPU util > 80% on next monitor fire.**
+
+**Critical pre-fix data point** (from one experiment that fired with new defaults):
+- NM0_normuon_alone log showed `train_batch_tokens:32768 train_seq_len:512` confirming the new BASE_ENV took effect
+- But NM0 was running concurrently with old-config experiments from the duplicate runner, so its results may be corrupted
+
+### PR #1430 status (task #57)
+
+- **State**: OPEN, no merge, no comments since creation 18h+ ago
+- **No comp owner activity**
+- Continue watching every 2h
+
+### Novelty re-verification (subagent — 8th audit)
+
+**Patches still novel**:
+- ✓ Patch 15 USE_TABULATION_HASH
+- ✓ Patch 16 USE_GATED_ATTENTION (NeurIPS 2025) — note PR #1446/#1448 mention "gated Krylov" but different mechanism
+- ✓ Patch 21 USE_MTP (DeepSeek-V3)
+- ✓ Patch 20 USE_COPRIME_STRIDE (shard-level — distinct from PR #1099 token-level)
+- ✓ Patch 25 USE_NORMUON (Mac SETUP §50)
+
+**Patches NO LONGER novel**:
+- ✗ **Patch 21 USE_XSA** — PR #1448 ("FlashMuon + XSA5LastGated + Int6AWQ") explicitly uses XSA. We were never the first; XSA is from arxiv:2603.09078 and now actively in flight in multiple PRs. Mark our implementation as a port-with-evidence rather than novel-to-comp.
+
+### New competitor PRs since last audit
+
+| PR# | Title | Author | Score |
+|---|---|---|---|
+| 1449 | Depth Recurrence Ablation (torch.compile=0) | codeprakhar25 | (ablation) |
+| 1448 | FlashMuon + XSA5LastGated + Int6AWQ | shram86 | (record attempt) |
+| 1446 | Gated Krylov + GPTQ int6 | LauraGomezjurado | 1.09596 |
+| 1445 | 3-Layer Depth Recurrence + EMA + WD | X-Abhishek-X | 1.0889 RECORD |
+
+**Notable**: PR #1449 explicitly tests `torch.compile=0` as an ablation. Confirms that torch.compile compatibility is a known live issue in the comp.
+
+### Spend check
+
+Pod uptime ≈ 8h 47min × $0.30/h = $2.63 raw GPU + $1.10 H100 burn + $2.10 ops = **~$5.83 / $36 (16.2%)**. Soft cap $25 = 23%. **77% headroom**. Far below the $25 flag threshold.
+
+### Audit verdict #8
+
+**Speed fix deployed but NOT yet validated** (next monitor fire is the test). Duplicate runner issue resolved. Patch 21 XSA reclassified as port-with-evidence rather than novel.
+
+Most urgent next moves:
+1. **Next monitor fire (~15 min)**: verify GPU util > 80% with the new config. If not, push batch tokens 2x more.
+2. **Investigate SPEED4/5 crash root cause**: torch.compile + XSA/EL conflict. May need to disable torch.compile when XSA or EL are active.
+3. **Re-validate ALL prior patches under the new compute regime**: the "neutrality plateau" verdict was based on 0.75% of the intended data volume. Mousse, MuonEq-R, NorMuon, Depth Recurrence may all need fresh runs at the proper batch size.
