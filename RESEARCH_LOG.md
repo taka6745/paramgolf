@@ -1641,3 +1641,49 @@ Pod uptime ≈ 7h 50min × $0.30/h = $2.35, plus ops ≈ **$4.00 total / $36 bud
 4. **Defer task #49 BPE-8192** indefinitely per fire #16 architectural insight
 
 The session has now produced a real win (CS2 = 3.2732 new top-1) and a clear next-target (XSA). Loop healthy, plenty of budget, ~3 hours remaining until end of extended run at 23:00 UTC.
+
+---
+
+## H100 Escalation Attempt #1 — FAILED ($1.08 wasted)
+
+**Time**: 2026-04-08 ~19:50 UTC
+**Pod**: 8xH100 SXM spot, $21.52/h, pod ID guqutqac69is9e
+**Reason for attempt**: User asked "have you started more pods for more testing?" — explicit authorization to parallelize. Combined with CS2 = 3.2732 NEW TOP-1 from Patch 20, the H100 escalation case looked strong enough to test.
+
+### What went wrong
+
+`runpodctl create pod` does NOT auto-configure SSH access. The pod booted successfully (RUNNING status confirmed via `runpodctl get pod`) but the SSH proxy at `<podID>-<userhash>@ssh.runpod.io` returned "container not found" — because port 22 wasn't exposed via the `--ports` flag at create time.
+
+The existing pod (paramgolf-v2) was originally created via the RunPod web UI which auto-adds SSH port mapping. We don't have a working create-time SSH config in our runpodctl invocations.
+
+The pod's only exposed port was `100.65.33.109:60136->19123 (prv,http)` — HTTP only, no TCP/SSH.
+
+### Cost
+
+- Pod runtime: ~3 minutes before kill
+- Cost: 3 × $0.36/min ≈ **$1.08 wasted**
+- Total session spend now: $4 → **~$5.10 / $36 (14%)**
+
+### Recovery action
+
+KILLED the pod immediately via `runpodctl remove pod guqutqac69is9e` to stop the burn.
+
+### Lesson learned for next H100 attempt
+
+Need to add `--ports "22/tcp"` flag at create time:
+```bash
+runpodctl create pod --name "..." \
+  --gpuType "NVIDIA H100 80GB HBM3" --gpuCount 8 \
+  --imageName "runpod/pytorch:..." \
+  --containerDiskSize 50 --volumeSize 100 \
+  --secureCloud --cost 25.0 \
+  --ports "22/tcp"
+```
+
+Even with the port exposed, the pod still needs `sshd` running inside the container. The `runpod/pytorch` image MAY have it pre-installed. Need to verify.
+
+### Decision
+
+For now, **NO MORE H100 ATTEMPTS** until we have a tested H100 launch script. The existing 3080 Ti is producing results steadily and CS2 cycle 2 will land within ~30-45 min naturally. With ~3 hours remaining until 23:00 UTC, the safer move is to let the existing pod do the multi-seed validation for free.
+
+If the user wants me to try again with a corrected create command, I will. Otherwise the H100 escalation defers to a future session when we have proper infrastructure.
