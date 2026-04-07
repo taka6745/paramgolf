@@ -298,6 +298,21 @@ else:
         self.register_buffer("_bigram_tab", torch.zeros(1, dtype=torch.float32), persistent=False)
         self.register_buffer("_trigram_tab", torch.zeros(1, dtype=torch.float32), persistent=False)
         self.register_buffer("_fourgram_tab", torch.zeros(1, dtype=torch.float32), persistent=False)
+        # Always init these so Patch 15's forward-pass references don't crash
+        self._use_tabulation = bool(int(os.environ.get("USE_TABULATION_HASH", "0")))
+        self.register_buffer("_tab_t1", torch.zeros(1, dtype=torch.int64), persistent=False)
+        self.register_buffer("_tab_t2", torch.zeros(1, dtype=torch.int64), persistent=False)
+        self.register_buffer("_tab_t3", torch.zeros(1, dtype=torch.int64), persistent=False)
+        if self._use_tabulation:
+            import numpy as _np
+            try:
+                self._tab_t1 = torch.from_numpy(_np.load("./data/tab_hash_t1.npy")).long()
+                self._tab_t2 = torch.from_numpy(_np.load("./data/tab_hash_t2.npy")).long()
+                self._tab_t3 = torch.from_numpy(_np.load("./data/tab_hash_t3.npy")).long()
+                print("TABULATION_HASH: loaded T1/T2/T3 tables shape", self._tab_t1.shape)
+            except Exception as _e:
+                print("TABULATION_HASH: load failed (will fall back to polynomial):", _e)
+                self._use_tabulation = False
         if self._ngram_enabled:
             import numpy as _np
             _ngsuffix = "_tab" if bool(int(os.environ.get("USE_TABULATION_HASH", "0"))) else ""
@@ -472,36 +487,18 @@ else:
 if "TABULATION_HASH_MARKER" in content:
     print("  ✓ tabulation hash already applied")
 else:
-    # Add T1/T2/T3 buffer load in NGRAM_BIAS init (after fourgram load)
-    old_ng_init_close = """            try:
-                _fg = _np.load("./data/fourgram_logprobs_{}v.npy".format(vocab_size))
-                self._fourgram_tab = torch.from_numpy(_fg).float()
-                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
-            except Exception as _e:
-                print("NGRAM_BIAS: fourgram load failed:", _e)"""
-    new_ng_init_close = """            try:
-                _fg = _np.load("./data/fourgram_logprobs_{}v.npy".format(vocab_size))
-                self._fourgram_tab = torch.from_numpy(_fg).float()
-                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
-            except Exception as _e:
-                print("NGRAM_BIAS: fourgram load failed:", _e)
-            # TABULATION_HASH_MARKER: load T1/T2/T3 lookup tables if available
-            self._use_tabulation = bool(int(os.environ.get("USE_TABULATION_HASH", "0")))
-            self.register_buffer("_tab_t1", torch.zeros(1, dtype=torch.int64), persistent=False)
-            self.register_buffer("_tab_t2", torch.zeros(1, dtype=torch.int64), persistent=False)
-            self.register_buffer("_tab_t3", torch.zeros(1, dtype=torch.int64), persistent=False)
-            if self._use_tabulation:
-                try:
-                    self._tab_t1 = torch.from_numpy(_np.load("./data/tab_hash_t1.npy")).long()
-                    self._tab_t2 = torch.from_numpy(_np.load("./data/tab_hash_t2.npy")).long()
-                    self._tab_t3 = torch.from_numpy(_np.load("./data/tab_hash_t3.npy")).long()
-                    print("TABULATION_HASH: loaded T1/T2/T3 tables shape", self._tab_t1.shape)
-                except Exception as _e:
-                    print("TABULATION_HASH: load failed (will fall back to polynomial):", _e)
-                    self._use_tabulation = False"""
-    if old_ng_init_close in content:
-        content = content.replace(old_ng_init_close, new_ng_init_close)
-        print("  ✓ added TABULATION_HASH buffer load")
+    # NOTE: TABULATION_HASH init is now done unconditionally inside Patch 6's
+    # NGRAM_BIAS init block — see lines just above the "if self._ngram_enabled"
+    # check. This avoids the patcher anchor brittleness that bit us earlier.
+    # Patch 15 only handles the LOOKUP-side hash swap below.
+    print("  ✓ TABULATION_HASH init handled by Patch 6 unconditionally (no anchor needed)")
+    # Add a marker comment so re-runs detect this patch was processed:
+    if "# TABULATION_HASH_MARKER processed by Patch 6" not in content:
+        content = content.replace(
+            "self.register_buffer(\"_tab_t1\", torch.zeros(1, dtype=torch.int64), persistent=False)",
+            "# TABULATION_HASH_MARKER processed by Patch 6\n        self.register_buffer(\"_tab_t1\", torch.zeros(1, dtype=torch.int64), persistent=False)",
+            1,
+        )
 
     # Replace bigram hash lookup
     old_bi_hash = """            _ids_flat = input_ids.reshape(-1).long()  # (B*S,)
