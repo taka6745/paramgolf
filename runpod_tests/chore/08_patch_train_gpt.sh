@@ -197,6 +197,37 @@ if old_int8 is not None and old_int8 in content:
     if "import sys" not in content:
         content = "import sys\n" + content
 
+# Patch 5: clamp PHASE2_SEQ_LEN to microbatch capacity at transition.
+# Without this, setting train_seq_len = 1024 mid-run when microbatch is 128
+# (e.g. TRAIN_BATCH_TOKENS=1024 / hardcoded grad_accum=8 = 128 tokens) causes
+# `local[:-1].reshape(-1, 1024)` to crash on the very next next_batch() call.
+# This patch upgrades the unclamped V1 phase-transition block (inserted by
+# Patch 3 above on first run) to a clamped version. Idempotent via PHASE_TRANSITION_CLAMP marker.
+if "PHASE_TRANSITION_CLAMP" in content:
+    print("  ✓ phase transition microbatch clamp already applied")
+else:
+    old_unclamped = """        # PHASE_TRANSITION_MARKER: progressive seq phase transition (uses elapsed_ms)
+        if _prog_seq and _current_phase == 1 and elapsed_ms >= _phase1_end_ms:
+            _current_phase = 2
+            args.train_seq_len = _phase2_seq
+            _prog_lr_mult = _phase2_lr_mult
+            log0(f"PHASE TRANSITION at step {step}: seq {_phase1_seq} -> {_phase2_seq}, "
+                 f"lr_mult {_phase1_lr_mult} -> {_phase2_lr_mult}")"""
+    new_clamped = """        # PHASE_TRANSITION_MARKER PHASE_TRANSITION_CLAMP: clamp phase2 seq to microbatch
+        if _prog_seq and _current_phase == 1 and elapsed_ms >= _phase1_end_ms:
+            _current_phase = 2
+            _max_micro = args.train_batch_tokens // (world_size * grad_accum_steps)
+            _effective_p2 = min(_phase2_seq, _max_micro)
+            args.train_seq_len = _effective_p2
+            _prog_lr_mult = _phase2_lr_mult
+            log0(f"PHASE TRANSITION at step {step}: seq {_phase1_seq} -> {_effective_p2} (microbatch_max={_max_micro}), "
+                 f"lr_mult {_phase1_lr_mult} -> {_phase2_lr_mult}")"""
+    if old_unclamped in content:
+        content = content.replace(old_unclamped, new_clamped)
+        print("  ✓ upgraded phase transition to clamped version (avoids reshape crash)")
+    else:
+        print("  ! couldn't find unclamped phase transition block — clamp not applied")
+
 with open("train_gpt.py", "w") as f:
     f.write(content)
 PYEOF
