@@ -1088,6 +1088,43 @@ else:
         content = content.replace(old_loop, new_loop)
         print("  ✓ added WAVELET calls in GPT.forward")
 
+# Patch 17: USE_MOUSSE=1 → diagonal Kronecker preconditioning before Newton-Schulz
+# orthogonalization in the Muon optimizer step.
+#
+# From PR #1440 [Submission] EngramLite + Mousse + Progressive Depth Recurrence + TTT
+# (val_bpb 1.1026, attribution -0.002 BPB to Mousse alone). Reference paper:
+# arxiv:2603.09697 "Mousse: Rectifying the Geometry of Muon with Curvature-Aware
+# Preconditioning" (Feb 2026).
+#
+# Mathematical formulation: for each Muon-managed weight matrix G,
+#   L_diag = diag(G @ G^T)  # row sum of squares
+#   R_diag = diag(G^T @ G)  # col sum of squares
+#   G_pre = G * L_diag^(-1/2) * R_diag^(-1/2)
+# Equivalently: G[i,j] /= ||row_i||_2 * ||col_j||_2
+#
+# Audit of comp PRs (research fire #9): only PR #1440 mentions Mousse, and even THEY
+# didn't implement the full EMA + eigendecomposition machinery — they ship the simplified
+# diagonal preconditioning only. We're shipping the same simplified version (~5 LOC),
+# gated by USE_MOUSSE=1, falling back to vanilla Muon when the env var is unset.
+#
+# Idempotent via MOUSSE_MARKER. Anchored on the unique zeropower_via_newtonschulz5 call
+# in the Muon optimizer step which has been stable since Patch 2.
+if "MOUSSE_MARKER" in content:
+    print("  ✓ Mousse already applied")
+else:
+    old_ns = """                    g = zeropower_via_newtonschulz5(g, steps=backend_steps)"""
+    new_ns = """                    # MOUSSE_MARKER: optional diagonal preconditioning before Newton-Schulz (arxiv:2603.09697)
+                    if int(os.environ.get("USE_MOUSSE", "0")):
+                        _l = g.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+                        _r = g.norm(dim=-2, keepdim=True).clamp(min=1e-8)
+                        g = g / (_l * _r)
+                    g = zeropower_via_newtonschulz5(g, steps=backend_steps)"""
+    if old_ns in content:
+        content = content.replace(old_ns, new_ns)
+        print("  ✓ added MOUSSE diagonal preconditioning")
+    else:
+        print("  ✗ MOUSSE anchor not found — skipping (Mousse will be no-op)")
+
 with open("train_gpt.py", "w") as f:
     f.write(content)
 PYEOF

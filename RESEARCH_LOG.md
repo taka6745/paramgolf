@@ -739,3 +739,73 @@ Caveat: EL has STRUCTURAL outlier seeds (7 and 999, ~+0.18 above mean). At H100 
 **No urgent action**. Loop is healthy and continuing through cycle 2 of the cleaned 20-experiment queue. The hyperparameter-stable champion family is CHAMP_L5 + EngramLite at seeds 1337/42. Three deferred specs (EMA, Tilt, INT6 GPTQ) ready for combined H100 escalation.
 
 **Open question for next research fire**: investigate "Mousse" from PR #1440. We ported one half of that PR (EngramLite) but ignored the other half. Could be a free additional win we missed.
+
+---
+
+## Research Fire #9 — 2026-04-08 (cron min :46, Track B = comp PRs) — Patch 17 USE_MOUSSE SHIPPED
+
+**Subject**: Investigate "Mousse" technique paired with EngramLite in PR #1440. Audit fire #3 flagged this as the unknown technique we ignored when porting Patch 22.
+
+### Subagent finding (deep dive)
+
+**Mousse = optimizer-side technique**: extends Muon optimizer with diagonal Kronecker preconditioning. Reference paper **arxiv:2603.09697** "Mousse: Rectifying the Geometry of Muon with Curvature-Aware Preconditioning" (Feb 2026).
+
+**Formula** (corrected from subagent's pseudocode which had an extra .sqrt()):
+```
+L_diag = diag(G @ G^T)  # row sum of squares of momentum gradient G
+R_diag = diag(G^T @ G)  # col sum of squares
+G_pre  = G * L_diag^(-1/2) * R_diag^(-1/2)
+       = G[i,j] / (||row_i||_2 * ||col_j||_2)
+```
+
+Then standard Newton-Schulz orthogonalization on G_pre instead of raw G. Trace-normalizes the matrix before spectral orthogonalization, stabilizing the iteration.
+
+### Why I OVERRODE the subagent's PASS verdict and SHIPPED
+
+Subagent recommended PASS for two reasons (medium implementation effort, PR #1440 didn't fully implement). I disagreed:
+
+1. **OPTIMIZER-SIDE means it affects train_loss directly**. Unlike EMA, N-gram Tilt, INT6 GPTQ (all eval/serialization-side), Mousse modifies the optimizer step's gradient flow. We CAN measure it on our cheap-GPU experiment loop via train_loss within ONE cycle. This is the FIRST shippable training-time finding from any research fire that fits our metric.
+
+2. **PR #1440 ships the SIMPLIFIED version** (just diagonal preconditioning, no EMA/eigendecomposition). That version is only ~5 LOC, not 50-80. The subagent overestimated complexity.
+
+3. **SINGLE-PR novelty**: only PR #1440 mentions Mousse, and even they didn't implement the full version. We'd be the SECOND comp submission to use it AND we'd be testing whether the simplified version actually helps. Genuinely novel-to-comp from an empirical standpoint.
+
+4. **Low risk**: gated by `USE_MOUSSE=1`, falls back to vanilla Muon when env var unset, anchored on the unique `g = zeropower_via_newtonschulz5(g, steps=backend_steps)` line in train_gpt.py which is invariant under our existing patches.
+
+### Patch 17 USE_MOUSSE — code shipped this fire
+
+Inserted before the Newton-Schulz call in the Muon optimizer step:
+```python
+# MOUSSE_MARKER: optional diagonal preconditioning before Newton-Schulz (arxiv:2603.09697)
+if int(os.environ.get("USE_MOUSSE", "0")):
+    _l = g.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+    _r = g.norm(dim=-2, keepdim=True).clamp(min=1e-8)
+    g = g / (_l * _r)
+g = zeropower_via_newtonschulz5(g, steps=backend_steps)
+```
+
+**5 lines of actual code**, contained inside the existing Muon optimizer step body. Matches the upstream train_gpt.py indentation (20 spaces, 5 levels deep). Marker `MOUSSE_MARKER` enforces idempotency. Falls back to a no-op print if anchor not found (graceful degradation).
+
+### Experiments queued (4 added → queue is now 24)
+
+- **MS0_mousse_alone** — pure Mousse without n-gram bias, measures the optimizer effect in isolation
+- **MS1_mousse_plus_leaky_ng** — Mousse + leaky_relu + L5 weights (champion config) — measures the Mousse delta on top of our champion
+- **MS2_mousse_seed42** — multi-seed validation of MS1
+- **MS3_mousse_plus_engram** — full stack: Mousse + EngramLite + L4 weights (mimics PR #1440 stack at our scale)
+
+### Why this fire is different from fires #4-#8 (all PASS/DEFER)
+
+Fires #4-#8 found techniques that either (a) didn't fit our metric (eval-only — can't validate on loop) or (b) had hard mathematical reasons to fail (EM-INF = temp sharpening) or (c) had high anchor risk on critical code paths (EMA + INT6 GPTQ on eval pipeline).
+
+**Mousse is the first finding in 5 fires that simultaneously**:
+- Fits our metric (training-time, train_loss observable)
+- Has solid math (published paper, not speculative)
+- Has a stable anchor on a unique line we haven't touched
+- Has low risk (gated, contained, falls back)
+- Is novel to comp (only 1 PR mentions it, and they didn't fully implement)
+
+This is why I overrode the subagent's cautious PASS. **First proper shippable patch in 5 fires.**
+
+### Validation plan
+
+Loop will pick up the new patch on next git pull (~5 min). MS family experiments will run within the next 2 hours via the runner cycle. Check on next monitor fire (~16:00 UTC) to see if MS1/MS2/MS3 land below 3.30 (within champion range) — if YES, Mousse is validated for H100 escalation bundle. If NO, we have evidence that even the simplified Mousse doesn't help at our 22M scale (a useful negative result either way).
