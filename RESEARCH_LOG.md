@@ -248,3 +248,25 @@ external prior. Pushed in this fire, queued as EA0/EA1/EA2/EA3.
 - **Mac-grounded** or **theoretically grounded** (count-min sketch is a published technique adapted to log-prob tables)
 - **Scales**: all are forward-pass changes that work the same at any model size
 - **Don't break BPB**: at worst they degrade to baseline (entropy gate → 1.0 if model is uniform)
+
+## 2026-04-07 22:32 local — Monitor #3, MTP first result IN
+
+MTP1_mtp_plus_leaky_ng = **3.2923** (rank 5 overall) with USE_MTP=1, MTP_NUM_HEADS=1,
+MTP_LOSS_WEIGHT=0.10 stacked on the L4 best config. Compared to L4_leaky_strong_weights
+(3.2947) at the same n-gram weights, MTP is +0.0003 BETTER at single seed.
+
+Within seed noise (~0.05) so not statistically meaningful yet, but **the hypothesis is
+NOT falsified** — DeepSeek MTP MAY transfer to byte-level small LMs at our scale.
+Strong enough to justify multi-seed validation.
+
+ACTION (next research fire): queue MTP1 with seeds 42, 999, and a higher-K variant
+(MTP_NUM_HEADS=2). Compare 3-seed mean against L4 3-seed mean (3.345).
+
+OTHER results from this monitor:
+- EA1_entropy_plus_leaky = 3.4490 — entropy-adaptive ngram is a NET LOSS (worse than
+  L1=3.33 by 0.12). **Patch 14 hypothesis falsified at scale**. Mark for SKIP in
+  final stack.
+- MTP0_mtp_alone = 3.7428 — MTP without n-gram, near baseline. Aux loss alone doesn't
+  help; needs to stack.
+- PR family (parallel residuals) is a confirmed dead-end at our scale: PR1=3.5678,
+  PR2=3.5629, PR3=3.5836. All ~3.57. Not a win.
