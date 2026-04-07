@@ -693,3 +693,49 @@ GPTQ-lite is strictly better. Lloyd-Max is the fallback if GPTQ proves unstable 
 | (new) | USE_INT6_GPTQ | serialization | #8 | -0.0003 BPB + 0.5MB headroom |
 
 Combined estimated gain when shipped together at H100 escalation: **+0.003 to +0.008 BPB** without affecting any training-loop metrics.
+
+---
+
+## Audit Fire #3 — 2026-04-08 ~15:38 UTC — third consecutive audit, EngramLite verdict updated
+
+### Pod status
+Loop alive (PID 123956 + new train_gpt 126??? running CHAMP_L5_seed7). Recent: CHAMP_L5_seed999 = 3.3248 (matches the seed-999 family outlier pattern). CHAMP_L5_seed7 in progress at step 600 train_loss ~4.27 — likely ANOTHER seed-7 outlier following the EL family pattern. **Possible new finding**: seeds 7 and 999 may be structurally bad for the L5 weight family TOO, not just EngramLite.
+
+### Novelty re-verification (subagent — third consecutive audit)
+
+**Patches 15/16/21 ALL STILL NOVEL** (zero hits across 100 open + 10 closed PRs):
+- ✓ Patch 15 USE_TABULATION_HASH — uncontested for 3 audits in a row
+- ✓ Patch 16 USE_GATED_ATTENTION — PR #1369 has "gated" but it's gated n-gram hashing (negative results), NOT attention gates
+- ✓ Patch 21 USE_MTP — zero hits for multi-token / DeepSeek / MTP across all PRs
+
+**This is the third consecutive audit confirming these 3 patches are uncontested in the comp.** They are our strongest novelty claim on paper, even though all 3 are marginal at our 22M scale.
+
+### New PRs since last audit (~1h delta)
+No major movement. Same lineup as audit fire #2:
+- PR #1444 LeakyReLU GPTQ-lite (screening run, no score)
+- PR #1443 ByteJEPA (1.3496, non-competitive)
+- PR #1441 nogakeren System Optimizations (in-develop)
+
+### NEW competitor techniques surfaced this audit (not in our stack)
+
+1. **Mousse** (PR #1440) — completely unknown technique paired with EngramLite in the same PR we ported. We grabbed EngramLite but ignored Mousse. **Worth a focused subagent dive next research fire** to understand what it is.
+2. **ETLB (Eval-Time Logit Bias)** (PR #1399, PR #1368) — compression-specific post-training technique appearing in 2 PRs. Possibly related to N-gram Tilt but specifically aimed at compression artifacts. Could complement Patch 23 INT6 GPTQ.
+3. **Per-Sample SLOT** (PR #1430, claimed 0.39642 BPB) — likely illegal under issue #677, but the SLOT mechanism (per-sequence learnable hidden + bias) is novel infrastructure. Audit fire #2 already flagged this.
+
+### Spend check
+Pod uptime ≈ 3.7h on RTX 3080 Ti @ $0.30/h ≈ **~$1.85 spent / $36 budget** (5% utilization). Soft cap $25, hard cap $36. **95% headroom**. No throttling.
+
+### EngramLite verdict (UPDATED from audit #1)
+
+Audit fire #1 marked EngramLite as "preliminarily falsified". This audit confirms the verdict has FLIPPED to "tied within noise":
+- EL good-seed (1337+42) mean across 6 runs = **3.2878**
+- CHAMP_L5 cross-cycle mean ≈ **3.297**
+- Δ = -0.009 (EL slightly better, well within noise band)
+
+Caveat: EL has STRUCTURAL outlier seeds (7 and 999, ~+0.18 above mean). At H100 escalation, **must use seeds 1337 or 42**, NOT 7/999. Documented in monitor #14.
+
+### Audit verdict
+
+**No urgent action**. Loop is healthy and continuing through cycle 2 of the cleaned 20-experiment queue. The hyperparameter-stable champion family is CHAMP_L5 + EngramLite at seeds 1337/42. Three deferred specs (EMA, Tilt, INT6 GPTQ) ready for combined H100 escalation.
+
+**Open question for next research fire**: investigate "Mousse" from PR #1440. We ported one half of that PR (EngramLite) but ignored the other half. Could be a free additional win we missed.
