@@ -91,19 +91,39 @@ if old_block in content:
 else:
     print("  ✗ couldn't find SDP call to patch (already different?)")
 
-# Patch 2: disable torch.compile (fails on same enable_gqa issue)
+# Patch 2: torch.compile RE-ENABLED with looser mode (fixes the enable_gqa issue
+# without disabling compile entirely). Original `dynamic=False, fullgraph=True` was
+# strict-mode which broke on enable_gqa. Default mode handles it gracefully.
+# Gated by USE_TORCH_COMPILE=0 (default ON) — set USE_TORCH_COMPILE=0 to fall back
+# to no-compile if a specific run hits an issue. Mac LESSONS wishlist: 25-35% speedup.
 old_compile = "compiled_model = torch.compile(base_model, dynamic=False, fullgraph=True)"
-new_compile = "compiled_model = base_model  # PATCHED: torch.compile disabled for PyTorch 2.4"
+new_compile = """compiled_model = base_model if int(os.environ.get('USE_TORCH_COMPILE', '1')) == 0 else torch.compile(base_model)  # PATCHED: re-enabled with default mode"""
 if old_compile in content:
     content = content.replace(old_compile, new_compile)
-    print("  ✓ disabled torch.compile on model")
+    print("  ✓ re-enabled torch.compile on model (default mode)")
 
-# Also disable the optimizer compile
+# Also re-enable the optimizer compile (Newton-Schulz hot path)
 old_opt = "zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)"
-new_opt = "# PATCHED: zeropower_via_newtonschulz5 = torch.compile(zeropower_via_newtonschulz5)"
+new_opt = """zeropower_via_newtonschulz5 = zeropower_via_newtonschulz5 if int(os.environ.get('USE_TORCH_COMPILE', '1')) == 0 else torch.compile(zeropower_via_newtonschulz5)"""
 if old_opt in content:
     content = content.replace(old_opt, new_opt)
-    print("  ✓ disabled torch.compile on Newton-Schulz")
+    print("  ✓ re-enabled torch.compile on Newton-Schulz")
+
+# Patch 2b: Turbo-Muon — env-var override for Newton-Schulz step count.
+# Mac LESSONS §35: "Free speedup, no quality loss, -0.026 BPB at NS_STEPS=4 vs 5".
+# Override the steps parameter inside the function body via env var.
+if "NS_STEPS_MARKER" not in content:
+    old_ns_body = """def zeropower_via_newtonschulz5(G: Tensor, steps: int) -> Tensor:
+    assert G.ndim >= 2"""
+    new_ns_body = """def zeropower_via_newtonschulz5(G: Tensor, steps: int) -> Tensor:
+    # NS_STEPS_MARKER: optional Turbo-Muon override (Mac LESSONS §35)
+    _ns_override = int(os.environ.get('NS_STEPS', '0'))
+    if _ns_override > 0:
+        steps = _ns_override
+    assert G.ndim >= 2"""
+    if old_ns_body in content:
+        content = content.replace(old_ns_body, new_ns_body)
+        print("  ✓ added NS_STEPS env var override (Turbo-Muon)")
 
 # Patch 3: honor PROGRESSIVE_SEQ env var (in-loop seq + LR scheduling).
 # Reads PROGRESSIVE_SEQ, PHASE1_SEQ_LEN, PHASE2_SEQ_LEN, PHASE1_LR_MULT,
