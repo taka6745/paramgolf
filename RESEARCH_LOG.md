@@ -1164,3 +1164,83 @@ Combined with Task #53 N-gram Tilt (already validated in PR #1437/#1420), the 3-
 ### Reminder: depth recurrence is back on the table
 
 LESSONS.md §29 originally claimed depth recurrence was "DEAD" but I previously updated it to ⚠ stale based on multiple records using it. PR #1445 makes this a 5+ records pattern. **If we have time to investigate further, depth recurrence is the highest-leverage architectural addition we haven't tried**. Worth a focused research fire.
+
+---
+
+## Research Fire #13 — 2026-04-08 (cron min :46, Track B = comp PRs) — Patch 19 USE_DEPTH_RECURRENCE SHIPPED (conservative variant)
+
+**Subject**: Audit fire #5 surfaced **depth recurrence** as the highest-leverage architectural addition we haven't tried (5+ records use it including the just-merged PR #1445 at 1.0889 BPB). Subagent extracted the canonical implementation from PRs #1437/#1445/#1331/#1421/#1260/#1334/#1290/#1204 — 8+ merged records all use it.
+
+### Subagent finding (technique definition)
+
+**Depth recurrence** = re-run a transformer block N times with shared weights, multiplying effective depth without param cost. PR #1437 uses 11 physical → 14 virtual layers via `LOOP_START=3, LOOP_END=5`. Reference papers: Universal Transformers (arxiv:1807.03819), ALBERT (arxiv:1909.11942).
+
+**Compute cost**: ~15% slower per step, but the comp PRs use a delayed start (`RECUR_START_STEP=2000`) to spend extra compute only after warmup.
+
+**Memory cost**: this is the critical concern. Subagent estimates 3-layer recurrence adds 500MB-1.5GB activations. Our 12GB 3080 Ti currently uses 6-8GB → 3-layer would be borderline OOM.
+
+### Conservative variant shipped this fire
+
+Per the OOM risk analysis, I shipped the **smallest possible variant**:
+- `LOOP_START=3, LOOP_END=3, RECUR_CYCLES=2` → re-run only block 3, twice → 1 extra forward pass through one block per training step
+- Estimated extra memory: <300MB (well within budget)
+- Estimated extra compute: ~5% per step
+
+### Patch 19 USE_DEPTH_RECURRENCE — code shipped this fire
+
+Two anchor points:
+
+1. **Init** (after wavelet init, before `_init_weights()`):
+```python
+# DEPTH_RECUR_MARKER: optional encoder block recurrence (PR #1437/#1445)
+self._depth_recur_enabled = bool(int(os.environ.get("USE_DEPTH_RECURRENCE", "0")))
+self._recur_start = int(os.environ.get("DEPTH_RECUR_START", "3"))
+self._recur_end = int(os.environ.get("DEPTH_RECUR_END", "3"))
+self._recur_cycles = int(os.environ.get("DEPTH_RECUR_CYCLES", "2"))
+```
+
+2. **Apply** (inside the encoder loop, after the block forward, anchored on the WAVELET-MODIFIED loop since Patch 8 runs first):
+```python
+for i in range(self.num_encoder_layers):
+    x = self.blocks[i](x, x0)
+    # DEPTH_RECUR_MARKER apply: re-run block i a few times if it's in the recur range
+    if self._depth_recur_enabled and self._recur_start <= i <= self._recur_end:
+        for _ in range(self._recur_cycles - 1):
+            x = self.blocks[i](x, x0)
+    if self._wavelet_enabled:
+        x = self._wavelet_mix(x, i, self._wavelet_mix_ratio)
+    skips.append(x)
+```
+
+3 lines of new code in the encoder loop. Marker `DEPTH_RECUR_MARKER` enforces idempotency. Falls back to vanilla pass when env var unset. Each anchor independently checks for match; partial application is graceful.
+
+### Why this is the FIRST architectural patch in 8 fires that fits our metric
+
+Depth recurrence MODIFIES THE FORWARD PASS of the model — it's training-time, not eval-time. This means:
+- Affects train_loss directly (we can validate on cheap GPU loop)
+- Falsifiable in 1-2 cycles (~10 min per experiment)
+- No H100 escalation needed for initial verdict
+
+This is the first non-optimizer training-time patch in many fires. Most architectural attempts (gated attention, tabulation hash, parallel residuals) failed at our scale, but depth recurrence has 8+ merged records — much higher port-with-evidence ratio.
+
+### Experiments queued (4 added → queue is now 32)
+
+- **DR0_recur_block3_min** — minimum variant: re-run block 3 twice + L5 weights champion config
+- **DR1_recur_blocks3_4** — slightly more aggressive: re-run blocks 3 AND 4 once each (2 extra block forwards)
+- **DR2_recur_block3_3x** — re-run block 3 three times instead of twice (test if more recurrence helps)
+- **DR3_recur_seed42** — multi-seed validation of DR0
+
+### OOM risk plan
+
+If DR1 (re-run 2 blocks) OOMs, the runner has crash-resilience and will skip after 3 crashes. We'll see in monitor fires. DR0 (re-run 1 block) is the most conservative and should fit easily.
+
+If DR0 fits and gives a clean train_loss, that's a real validation of depth recurrence at our scale. If DR0 lands BELOW 3.27, we have a new champion and the H100 escalation case becomes much stronger.
+
+### What this fire produced
+
+- **Patch 19 USE_DEPTH_RECURRENCE shipped** (24 patches total now in the script)
+- **4 DR experiments queued** for loop validation
+- **Conservative variant** (1-block re-run) chosen to manage OOM risk on 12GB 3080 Ti
+- **First architectural patch** in many fires that fits our train_loss metric
+
+This is the third optimizer/architectural patch in 5 fires that I've shipped (Mousse #9, MuonEq-R #10, Depth Recurrence #13). The pattern of "find a port from a top record, ship the conservative variant, validate on the loop within 1-2 hours" is now the operating mode for the remaining session.

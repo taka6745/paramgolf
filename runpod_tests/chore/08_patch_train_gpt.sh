@@ -1088,6 +1088,67 @@ else:
         content = content.replace(old_loop, new_loop)
         print("  ✓ added WAVELET calls in GPT.forward")
 
+# Patch 19: USE_DEPTH_RECURRENCE=1 → re-run middle encoder blocks N times each.
+# From PR #1437 (1.0809 BPB), PR #1445 (1.0889 BPB), PR #1331, PR #1421, PR #1260, PR #1334,
+# PR #1290, PR #1204 — 8+ merged records use depth recurrence. Conservative variant ships
+# here: re-run a single configurable block in the encoder N times. Default: block 3 twice
+# (= 1 extra forward pass through one block, lowest OOM risk on our 12GB 3080 Ti).
+#
+# Reference: Universal Transformers (arxiv:1807.03819), ALBERT (arxiv:1909.11942) for the
+# weight-sharing-across-depth idea. The competition uses a delayed-start variant
+# (RECUR_START_STEP) to spend extra compute only after warmup.
+#
+# Implementation: insert a re-run loop INSIDE the encoder block iteration (just after the
+# block forward, before wavelet/skip-append). Falls back to vanilla pass when env var unset.
+#
+# Idempotent via DEPTH_RECUR_MARKER. Anchored on the WAVELET-MODIFIED encoder loop (Patch 8
+# runs before Patch 19 in this script). Two anchor points: init in __init__ (after wavelet
+# init), apply in GPT.forward encoder loop.
+if "DEPTH_RECUR_MARKER" in content:
+    print("  ✓ depth recurrence already applied")
+else:
+    # 1) Init: insert env-var registration after wavelet init, before _init_weights()
+    old_dr_init = """        self._wavelet_mix_ratio = float(os.environ.get("WAVELET_MIX_RATIO", "0.20"))
+        self._init_weights()"""
+    new_dr_init = """        self._wavelet_mix_ratio = float(os.environ.get("WAVELET_MIX_RATIO", "0.20"))
+        # DEPTH_RECUR_MARKER: optional encoder block recurrence (PR #1437/#1445)
+        self._depth_recur_enabled = bool(int(os.environ.get("USE_DEPTH_RECURRENCE", "0")))
+        self._recur_start = int(os.environ.get("DEPTH_RECUR_START", "3"))
+        self._recur_end = int(os.environ.get("DEPTH_RECUR_END", "3"))
+        self._recur_cycles = int(os.environ.get("DEPTH_RECUR_CYCLES", "2"))
+        self._init_weights()"""
+    if old_dr_init in content:
+        content = content.replace(old_dr_init, new_dr_init)
+        print("  ✓ added DEPTH_RECUR init")
+    else:
+        print("  ✗ DEPTH_RECUR init anchor not found — skipping init")
+
+    # 2) Apply: insert re-run loop inside the encoder iteration, after block forward
+    #    Anchored on the WAVELET-MODIFIED encoder block body which has the form:
+    #        x = self.blocks[i](x, x0)
+    #        if self._wavelet_enabled:
+    #            x = self._wavelet_mix(x, i, self._wavelet_mix_ratio)
+    #        skips.append(x)
+    old_dr_apply = """        for i in range(self.num_encoder_layers):
+            x = self.blocks[i](x, x0)
+            if self._wavelet_enabled:
+                x = self._wavelet_mix(x, i, self._wavelet_mix_ratio)
+            skips.append(x)"""
+    new_dr_apply = """        for i in range(self.num_encoder_layers):
+            x = self.blocks[i](x, x0)
+            # DEPTH_RECUR_MARKER apply: re-run block i a few times if it's in the recur range
+            if self._depth_recur_enabled and self._recur_start <= i <= self._recur_end:
+                for _ in range(self._recur_cycles - 1):
+                    x = self.blocks[i](x, x0)
+            if self._wavelet_enabled:
+                x = self._wavelet_mix(x, i, self._wavelet_mix_ratio)
+            skips.append(x)"""
+    if old_dr_apply in content:
+        content = content.replace(old_dr_apply, new_dr_apply)
+        print("  ✓ added DEPTH_RECUR encoder loop")
+    else:
+        print("  ✗ DEPTH_RECUR apply anchor not found — skipping apply")
+
 # Patch 18: USE_MUONEQ_R=1 → row-only normalization before Newton-Schulz orthogonalization.
 # From arxiv:2603.28254 "MuonEq: Balancing Before Orthogonalization with Lightweight
 # Equilibration" (Mar 2026). Used in 40+ openai/parameter-golf PRs, top record PR #1260
