@@ -371,18 +371,19 @@ else:
 if "NGRAM_GATE_MARKER" in content:
     print("  ✓ ngram gate already applied")
 else:
-    # Add the gate Linear in __init__ right next to the wavelet flag
-    old_wave_init = """        self._wavelet_enabled = bool(int(os.environ.get("USE_WAVELET", "0")))
-        self._wavelet_mix_ratio = float(os.environ.get("WAVELET_MIX_RATIO", "0.20"))"""
-    new_wave_init = """        self._wavelet_enabled = bool(int(os.environ.get("USE_WAVELET", "0")))
-        self._wavelet_mix_ratio = float(os.environ.get("WAVELET_MIX_RATIO", "0.20"))
+    # Anchor on Patch 6's NGRAM_BIAS init block end (which runs before Patch 12 in this script).
+    # The fourgram print line is unique and stable.
+    old_anchor = """                print("NGRAM_BIAS: fourgram load failed:", _e)
+        self._init_weights()"""
+    new_anchor = """                print("NGRAM_BIAS: fourgram load failed:", _e)
         # NGRAM_GATE_MARKER: learned per-position gate over n-gram bias
         self._ngram_gate_enabled = bool(int(os.environ.get("USE_NGRAM_GATE", "0")))
         if self._ngram_gate_enabled:
             self.ngram_gate_proj = CastedLinear(model_dim, 1, bias=True)
-            self.ngram_gate_proj._zero_init = True"""
-    if old_wave_init in content:
-        content = content.replace(old_wave_init, new_wave_init)
+            self.ngram_gate_proj._zero_init = True
+        self._init_weights()"""
+    if old_anchor in content:
+        content = content.replace(old_anchor, new_anchor)
         print("  ✓ added NGRAM_GATE init")
 
     # Wrap the bigram/trigram/fourgram lookups in a gate factor
