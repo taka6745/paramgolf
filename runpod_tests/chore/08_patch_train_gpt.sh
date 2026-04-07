@@ -351,6 +351,37 @@ else:
         content = content.replace(old_softcap, new_softcap)
         print("  ✓ added NGRAM_BIAS forward pass")
 
+# Patch 11: USE_SMEAR_GATE=1 → smear current token activations with previous token before MLP.
+# Mac validated -0.019 BPB at 500 steps (LESSONS.md §3 — second-best non-tokenizer Mac trick).
+# Implementation: x_for_mlp = alpha * x + (1-alpha) * shift_right(x). Causal, no future leak.
+# Idempotent via SMEAR_GATE_MARKER.
+if "SMEAR_GATE_MARKER" in content:
+    print("  ✓ smear gate already applied")
+else:
+    old_block_forward = """    def forward(self, x: Tensor, x0: Tensor) -> Tensor:
+        mix = self.resid_mix.to(dtype=x.dtype)
+        x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+        attn_out = self.attn(self.attn_norm(x))
+        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
+        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
+        return x"""
+    new_block_forward = """    def forward(self, x: Tensor, x0: Tensor) -> Tensor:
+        mix = self.resid_mix.to(dtype=x.dtype)
+        x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+        attn_out = self.attn(self.attn_norm(x))
+        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
+        # SMEAR_GATE_MARKER: smear current token with previous token before MLP (Mac -0.019)
+        _mlp_in = self.mlp_norm(x)
+        if int(os.environ.get("USE_SMEAR_GATE", "0")):
+            _smear_alpha = float(os.environ.get("SMEAR_ALPHA", "0.5"))
+            _shifted = F.pad(_mlp_in, (0, 0, 1, 0))[:, :-1]
+            _mlp_in = _smear_alpha * _mlp_in + (1.0 - _smear_alpha) * _shifted
+        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(_mlp_in)
+        return x"""
+    if old_block_forward in content:
+        content = content.replace(old_block_forward, new_block_forward)
+        print("  ✓ added SMEAR_GATE pre-MLP smear")
+
 # Patch 9: USE_LEAKY_RELU=1 → MLP activation is leaky_relu(0.5)^2 instead of relu^2.
 # Mac validated -0.014 BPB at 500 steps (LESSONS.md §2). One-line MLP change.
 # Idempotent via LEAKY_RELU_MARKER.
