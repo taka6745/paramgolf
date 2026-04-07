@@ -119,9 +119,10 @@ def run_experiment(exp: dict) -> dict:
     print(f"  overrides: {env_overrides}", flush=True)
 
     t0 = time.time()
+    env["PYTHONUNBUFFERED"] = "1"
     with log_path.open("w") as logf:
         proc = subprocess.run(
-            ["python3", "train_gpt.py"],
+            ["python3", "-u", "train_gpt.py"],
             env=env,
             stdout=logf,
             stderr=subprocess.STDOUT,

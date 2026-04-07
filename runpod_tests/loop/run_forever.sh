@@ -23,6 +23,8 @@ mkdir -p runpod_tests/loop/logs
 echo "=== run_forever launched at $(date -u) PID=$ME ==="
 
 while true; do
+    # Auto-pull latest experiments / runner code before each restart
+    git pull --rebase 2>&1 | tail -2 || true
     python3 -u runpod_tests/loop/experiment_runner.py
     echo "=== runner exited with code $? at $(date -u) — restart in 5s ==="
     sleep 5
