@@ -350,3 +350,58 @@ Spawned an Explore subagent to deep-dive the paper + check comp PR novelty + ass
 Nothing — per user instruction "If you can't find anything novel in this fire, that's OK — just append 'no novel finding' to RESEARCH_LOG.md and let the loop continue. Don't push junk." Not falsifying our existing wins by patching speculatively.
 
 The loop is healthy — 32+ runs, EL family + MTP follow-ups still finishing, top-3 stable. Next research fire (cron min :38, Track B) will scan comp PRs for genuinely new techniques.
+
+---
+
+## Audit Fire #1 — 2026-04-07 ~13:55 UTC — novelty + spend + queue hygiene
+
+### Pod status
+Loop alive (PID 123956 runner + GA family running through). Recent runs since last fire:
+- GA0_gated_attn_alone (re-run) = 3.5787 (was 3.7840 first time — seed variance)
+- GA1_gated_attn_full_ng = 3.3207 (gated attention + full n-gram, marginal)
+- GA2_gated_attn_seed42 = 3.3226
+- MEGA_stack_all_novel running, step 500 train_loss ~4.14 → BAD, the stack is fighting itself
+
+### Novelty audit (subagent — gh api last 10 open + 10 closed PRs)
+
+**Patches still novel after audit (3/6)**:
+- ✓ Patch 15 USE_TABULATION_HASH (Pătraşcu-Thorup 3-independence) — zero comp PRs reference it. Novel-to-comp confirmed.
+- ✓ Patch 16 USE_GATED_ATTENTION (NeurIPS 2025 arxiv:2505.06708) — zero comp PRs use it.
+- ✓ Patch 21 USE_MTP (DeepSeek-V3 arxiv:2412.19437) — zero comp PRs implement multi-token prediction.
+
+**Patches NO LONGER NOVEL (3/6)** — competitors got there:
+- ✗ Patch 22 USE_ENGRAM_LITE — explicitly ported from PR #1440 (already credited)
+- ✗ Patch 19 USE_PARTIAL_ROPE_16_64 — also in PR #1440 architecture
+- ✗ Patch 20 USE_LN_SCALE — also in PR #1440 architecture
+
+**This means 3/3 of the still-novel patches have FALSIFIED at training-loss level**:
+- Tab hash: 3-seed mean 3.396 vs L1 baseline 3.33 (worse by 0.06)
+- Gated attention: GA1=3.3207, GA2=3.3226 vs CHAMP_L4=3.276 (worse by 0.045)
+- MTP: 2-seed mean (1337+42) = 3.2895, on-par with CHAMP_L4 within noise (NOT a clear win)
+
+**Hard verdict**: We have ZERO genuinely novel patches that empirically beat the CHAMP_L4/L5 baselines at this scale. Our top result is still the same Mac-validated stack: leaky_relu + n-gram bias (CHAMP_L5_seed1337=3.2734).
+
+### Critical threat from competitors
+
+- **PR #1430**: claims val_bpb 0.39642 (65% below SOTA) via "Per-Sample SLOT + N-gram Order-22 + TTT + LR=0.432". The score is suspiciously low — likely illegal under issue #677 rules (the tilt-by-correct-token-at-eval-time class of trick). Worth verifying before trusting.
+- **PR #1437**: 1.0780 BPB via SP8192 + Parallel Residuals + 3-Layer Recurrence + Legal N-gram Tilt (3-seed mean). This is the legitimate frontier.
+- **PR #1423**: 1.0791 BPB via SP8192 + Pre-Quant TTT + QK-Gain 5.0 + Depth Recurrence + MuonEq-R. Legitimate.
+- **PR #1099 (latest merged)**: 1.1133 BPB via Coprime-Stride + Full GPTQ + XSA-all.
+
+### Spend check
+
+Pod uptime since session start ≈ 3h on RTX 3080 Ti @ $0.30/h ≈ **$0.90 spent of $36 budget**. Well under the $25 soft cap. No throttling needed.
+
+### Queue hygiene (NOT pushing — audit only, will push next research fire)
+
+Experiments that should be REMOVED from `runpod_tests/loop/experiments.json` next fire:
+- EA0/1/2/3 entropy_adaptive — falsified at scale, already in results
+- BG0/BG3 batch-size tweaks — pure parameter tweaks, not novelty
+- NG1/NG2/NG3 gate variants — gate experiments already failed in earlier fires
+- TH0/1/2 — already ran, falsified, can stay (runner skips them)
+
+The runner's `pick_next` already skips experiments with successful results, so leaving them is non-blocking. But cleaner queue helps the next research fire focus.
+
+### Audit verdict
+
+We need to PIVOT. The "easy port" patches haven't won at our scale. The queue is mostly running through tail experiments now. Top-3 is locked at the leaky+n-gram stack. Next research fire should look for **genuinely orthogonal** wins (not architecture variations): tokenizer changes, eval-time tricks (n-gram cache, score-first, TTT), data ordering (coprime stride from PR #1099), or compression-side wins (GPTQ quant, weight clustering). The current architectural-tweak vector is exhausted.
