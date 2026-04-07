@@ -26,15 +26,22 @@ LOG_DIR = LOOP_DIR / "logs"
 LEADERBOARD_FILE = LOOP_DIR / "leaderboard.txt"
 
 # Defaults applied to every experiment unless overridden
+# 2026-04-08 SPEED FIX: original was TRAIN_SEQ_LEN=128, TRAIN_BATCH_TOKENS=1024
+# = 8 sequences × 128 tokens = MICROSCOPIC. GPU at 6% memory, 34% util.
+# Bumped to seq=512 + batch=32768 (32 sequences × 1024 / 8 grad_accum) for
+# proper GPU saturation. Total tokens per experiment: 1.5M → 48M (32× more).
+# Total per cycle: experiments now see real data volumes.
+# Expect step time to rise from ~190ms to ~600-800ms but utilization >85%.
+# Wallclock budget bumped 240→480s to fit the bigger steps.
 BASE_ENV = {
-    "TRAIN_SEQ_LEN": "128",
-    "TRAIN_BATCH_TOKENS": "1024",
+    "TRAIN_SEQ_LEN": "512",
+    "TRAIN_BATCH_TOKENS": "32768",
     "VAL_BATCH_SIZE": "131072",
     "VAL_LOSS_EVERY": "0",
     "SKIP_FINAL_EVAL": "1",  # train_loss only — much faster signal
     "WARMUP_STEPS": "10",
     "ITERATIONS": "1000000",
-    "MAX_WALLCLOCK_SECONDS": "240",  # 4 min per experiment
+    "MAX_WALLCLOCK_SECONDS": "480",  # 8 min per experiment to fit bigger batches
     "TRAIN_LOG_EVERY": "100",
     "MODEL_DIM": "512",
     "NUM_LAYERS": "9",

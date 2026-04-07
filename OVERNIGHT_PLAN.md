@@ -5,6 +5,39 @@
 **Pod**: tyf0q5l1kgefgx-64410a6f@ssh.runpod.io (RTX 3080 Ti 12GB)
 **Goal**: ship novel, PhD-level techniques across the entire stack to win the openai/parameter-golf 16MB byte-level LM challenge.
 
+## 🚨 PRIORITY OVERRIDE (2026-04-08 20:25 UTC)
+
+User identified that the loop has been running with a MICROSCOPIC batch
+(`TRAIN_SEQ_LEN=128`, `TRAIN_BATCH_TOKENS=1024` = 8 sequences × 128 tokens
+per batch). GPU at 6% memory, 34% util. Model has trained on **0.75% of
+intended data**. The "neutrality plateau" was a measurement artifact —
+all techniques tested with 1.5M tokens instead of the intended ~200M.
+
+**MANDATORY for every cron fire from now until end of run**:
+1. Verify `TRAIN_SEQ_LEN >= 512` and `TRAIN_BATCH_TOKENS >= 32768` in
+   `runpod_tests/loop/experiment_runner.py`. If reverted, fix and push.
+2. Verify GPU util > 80% via `nvidia-smi` (check `/tmp/podstatus.sh`).
+   If <80%, BUMP batch tokens by 2× and push.
+3. **Speed before novelty**: every research fire must pick a technique
+   that improves THROUGHPUT or UTILIZATION over training time. Stop
+   shipping marginal training-side ports until throughput is fixed.
+4. Target: <300ms/step on RTX 3080 Ti at >80% GPU util, >50M tokens
+   processed per experiment. H100 target is <80ms/step (proportional).
+5. **NO MORE OPTIMIZER PORTS** (Mousse/MuonEq-R/NorMuon style) until
+   speed is fixed and validated. They've all been measured at the wrong
+   scale.
+
+## NEW CRON BEHAVIOR (effective 2026-04-08 20:25 UTC)
+
+The previous "find ONE novel technique" was producing marginal ports.
+The new mandate is **breakthrough on speed and utilization**. Specifically:
+
+- **Monitor fires**: ALSO check `nvidia-smi` for GPU util. Flag if <80%.
+- **Research fires**: prioritize hardware-side, data-loading, or
+  throughput improvements. Skip the comp PR mining grind.
+- **Audit fires**: enforce the >32768 batch tokens rule. Auto-fix if
+  reverted.
+
 ## CRITICAL FILES TO READ FIRST (every cron fire)
 
 If you're a cron-fired session waking up, read these IN THIS ORDER:
