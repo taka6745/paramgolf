@@ -67,7 +67,7 @@
 |---|---|---|---|---|---|
 | ~~A~~ | ~~paramgolf-v2~~ | ~~RTX 3080 Ti~~ | ~~tyf0q5l1kgefgx~~ | REMOVED | REMOVED |
 | **B** | paramgolf-test-1 | RTX 3090 24 GB | `vwkkjkevpvyrfs` | `ssh root@194.26.196.156 -p 19650 -i ~/.ssh/id_ed25519` | `vwkkjkevpvyrfs-6441169a@ssh.runpod.io` |
-| **C** | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | (proxy only) | `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io` |
+| **C** | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | (proxy only) | `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io` ⚠️ SSH BROKEN 0402Z |
 | **D** | paramgolf-test-3 | RTX 3090 24 GB | `1nqdd6aajwqofk` | `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519` | `1nqdd6aajwqofk-64411378@ssh.runpod.io` |
 | **E** | paramgolf-test-4 | RTX 3090 24 GB | `9g10r6i4rst296` | `ssh root@99.69.17.69 -p 11168 -i ~/.ssh/id_ed25519` | `9g10r6i4rst296-644114cb@ssh.runpod.io` |
 | **F** | paramgolf-test-5 | RTX 3090 24 GB | `373y5iemxa5s9o` | `ssh root@194.26.196.165 -p 18620 -i ~/.ssh/id_ed25519` | `373y5iemxa5s9o-64411631@ssh.runpod.io` |
