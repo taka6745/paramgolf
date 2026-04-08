@@ -1744,6 +1744,153 @@ else:
     else:
         print("  ✗ CTX_PARTITIONED_TAB bigram anchor not found — skipping")
 
+# Patch 32 (C90 mass-build #2, world-novel L02 INFRA #1): USE_DAT_BYTE_ENTROPY_CURRICULUM=1
+# → reorder TokenStream's shard list low-to-high zlib-compression-ratio (proxy for byte
+# entropy / Kolmogorov complexity). Easy bytes first, harder shards later. Pure data-loader
+# infra novelty: model-free, deterministic, 1-pass entropy proxy via zlib level-1.
+# Falls back to on-the-fly compute (~250ms/shard) if shard_entropy.json doesn't exist.
+# Stacks with USE_COPRIME_STRIDE: stride is computed AFTER reorder.
+# Source: STACK_NOVELTY_PLAN.md L02 + RESEARCH_BACKLOG.md L02 row 3.
+# Idempotent via DAT_BYTE_ENTROPY_CURRICULUM_MARKER.
+if "DAT_BYTE_ENTROPY_CURRICULUM_MARKER" in content:
+    print("  ✓ byte-entropy curriculum already applied")
+else:
+    old_files_init = """        self.files = [Path(p) for p in sorted(glob.glob(pattern))]
+        if not self.files:
+            raise FileNotFoundError(f"No files found for pattern: {pattern}")"""
+    new_files_init = """        self.files = [Path(p) for p in sorted(glob.glob(pattern))]
+        if not self.files:
+            raise FileNotFoundError(f"No files found for pattern: {pattern}")
+        # DAT_BYTE_ENTROPY_CURRICULUM_MARKER: optional easy→hard shard ordering
+        if int(os.environ.get("USE_DAT_BYTE_ENTROPY_CURRICULUM", "0")) and len(self.files) > 1:
+            import json as _json
+            _bec_reverse = bool(int(os.environ.get("BEC_REVERSE", "0")))
+            _bec_paths = [
+                self.files[0].parent / "shard_entropy.json",
+                Path("data") / "datasets" / self.files[0].parent.name / "shard_entropy.json",
+                Path("./data/shard_entropy.json"),
+            ]
+            _bec_map = None
+            for _bp in _bec_paths:
+                if _bp.exists():
+                    try:
+                        with open(_bp, "r") as _bf:
+                            _bec_map = _json.load(_bf)
+                        print(f"DAT_BYTE_ENTROPY_CURRICULUM: loaded {_bp} with {len(_bec_map)} entries")
+                        break
+                    except Exception as _e:
+                        print(f"DAT_BYTE_ENTROPY_CURRICULUM: failed to load {_bp}: {_e}")
+            if _bec_map is None:
+                import zlib as _zlib
+                _bec_map = {}
+                for _f in self.files:
+                    try:
+                        with open(_f, "rb") as _fh:
+                            _fh.seek(1024)
+                            _sample = _fh.read(1024 * 1024)
+                        _ratio = float(len(_zlib.compress(_sample, 1))) / float(max(len(_sample), 1))
+                        _bec_map[_f.name] = _ratio
+                    except Exception:
+                        _bec_map[_f.name] = 1.0
+                print(f"DAT_BYTE_ENTROPY_CURRICULUM: computed on-the-fly entropy for {len(_bec_map)} shards")
+            _val_files = [f for f in self.files if "val" in f.name]
+            _train_files = [f for f in self.files if "val" not in f.name]
+            _train_files.sort(key=lambda _f: _bec_map.get(_f.name, 1.0), reverse=_bec_reverse)
+            self.files = _train_files + _val_files
+            _r0 = _bec_map.get(_train_files[0].name, 1.0) if _train_files else None
+            _rN = _bec_map.get(_train_files[-1].name, 1.0) if _train_files else None
+            print(f"DAT_BYTE_ENTROPY_CURRICULUM: reordered {len(_train_files)} shards first={_r0} last={_rN} reverse={_bec_reverse}")"""
+    if old_files_init in content:
+        content = content.replace(old_files_init, new_files_init)
+        print("  ✓ added DAT_BYTE_ENTROPY_CURRICULUM shard reorder")
+    else:
+        print("  ✗ DAT_BYTE_ENTROPY_CURRICULUM anchor not found — skipping")
+
+# Patch 33 (C90 mass-build #2, world-novel L03 #1): USE_EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE=1
+# → constrain tok_emb.weight to live on a per-row K-sparse subspace of the DCT-II basis.
+# K is chosen per-row at init so that K coefficients hold ENERGY_FRAC (default 0.85) of the
+# row's spectral energy. The mask is then frozen, and a forward pre-hook re-projects
+# tok_emb.weight onto the masked DCT subspace at the START of every forward pass — making
+# the constraint a hard manifold constraint over the optimizer trajectory.
+# Energy-adaptive per-row K is the world-novel piece: punctuation rows get small K, content
+# rows get large K. Stacks with tied embeddings + MTP + NGRAM_BIAS (none mutate tok_emb).
+# Source: STACK_NOVELTY_PLAN.md L03 + RESEARCH_BACKLOG.md L03 row 7.
+# Idempotent via EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER.
+if "EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER" in content:
+    print("  ✓ DCT energy-truncate already applied")
+else:
+    old_emb_init = """        self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        self.num_encoder_layers = num_layers // 2"""
+    new_emb_init = """        self.tok_emb = nn.Embedding(vocab_size, model_dim)
+        # EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER: per-row energy-truncated DCT subspace
+        self._emb_dct_enabled = bool(int(os.environ.get("USE_EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE", "0")))
+        self._emb_dct_energy = float(os.environ.get("EMB_DCT_ENERGY_FRAC", "0.85"))
+        self._emb_dct_min_k = int(os.environ.get("EMB_DCT_MIN_K", "8"))
+        self._emb_dct_initialized = False
+        self.register_buffer("_emb_dct_basis", torch.zeros(1, dtype=torch.float32), persistent=False)
+        self.register_buffer("_emb_dct_basis_T", torch.zeros(1, dtype=torch.float32), persistent=False)
+        self.register_buffer("_emb_dct_mask", torch.zeros(1, dtype=torch.float32), persistent=False)
+        self.num_encoder_layers = num_layers // 2"""
+    if old_emb_init in content:
+        content = content.replace(old_emb_init, new_emb_init)
+        print("  ✓ added EMB_DCT init buffers")
+    else:
+        print("  ✗ EMB_DCT init anchor not found — skipping")
+
+    old_fwd_top = """    def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
+        x = self.tok_emb(input_ids)
+        x = F.rms_norm(x, (x.size(-1),))"""
+    new_fwd_top = """    def _emb_dct_init_and_project(self) -> None:
+        # EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER lazy init + per-step projection.
+        with torch.no_grad():
+            W = self.tok_emb.weight
+            V, D = W.shape
+            dev = W.device
+            if not self._emb_dct_initialized:
+                _n = torch.arange(D, dtype=torch.float32, device=dev).unsqueeze(0)
+                _k = torch.arange(D, dtype=torch.float32, device=dev).unsqueeze(1)
+                _basis = torch.cos(torch.pi * (_n + 0.5) * _k / float(D))
+                _basis = _basis * torch.sqrt(torch.tensor(2.0 / float(D), device=dev))
+                _basis[0] = _basis[0] * (1.0 / torch.sqrt(torch.tensor(2.0, device=dev)))
+                _coef = W.float() @ _basis.T
+                _energy = (_coef ** 2)
+                _row_total = _energy.sum(dim=-1, keepdim=True).clamp(min=1e-12)
+                _sorted_e, _sorted_idx = _energy.sort(dim=-1, descending=True)
+                _cum = _sorted_e.cumsum(dim=-1) / _row_total
+                _within = (_cum < self._emb_dct_energy).to(torch.long).sum(dim=-1) + 1
+                _k_per_row = _within.clamp(min=self._emb_dct_min_k, max=D)
+                _mask = torch.zeros_like(_coef)
+                _col_pos = torch.arange(D, device=dev).unsqueeze(0).expand(V, D)
+                _keep = (_col_pos < _k_per_row.unsqueeze(-1)).to(_mask.dtype)
+                _mask.scatter_(1, _sorted_idx, _keep)
+                self._emb_dct_basis = _basis
+                self._emb_dct_basis_T = _basis.T.contiguous()
+                self._emb_dct_mask = _mask
+                _coef_masked = _coef * _mask
+                W.data.copy_((_coef_masked @ _basis).to(W.dtype))
+                self._emb_dct_initialized = True
+                _avg_k = float(_k_per_row.float().mean())
+                print(f"EMB_DCT: V={V} D={D} energy={self._emb_dct_energy} avg_k={_avg_k:.1f}")
+            else:
+                _basis = self._emb_dct_basis
+                _basis_T = self._emb_dct_basis_T
+                _mask = self._emb_dct_mask
+                _coef = W.float() @ _basis_T
+                _coef = _coef * _mask
+                W.data.copy_((_coef @ _basis).to(W.dtype))
+
+    def forward(self, input_ids: Tensor, target_ids: Tensor) -> Tensor:
+        # EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER apply: project tok_emb.weight pre-fwd
+        if getattr(self, '_emb_dct_enabled', False):
+            self._emb_dct_init_and_project()
+        x = self.tok_emb(input_ids)
+        x = F.rms_norm(x, (x.size(-1),))"""
+    if old_fwd_top in content:
+        content = content.replace(old_fwd_top, new_fwd_top)
+        print("  ✓ added EMB_DCT forward projection")
+    else:
+        print("  ✗ EMB_DCT forward anchor not found — skipping")
+
 with open("train_gpt.py", "w") as f:
     f.write(content)
 PYEOF
@@ -1767,7 +1914,9 @@ expected = [
     "COPRIME_PER_HEAD_ROPE_MARKER",
     "COPRIME_STRIDE_MARKER",
     "CTX_PARTITIONED_TAB_MARKER",
+    "DAT_BYTE_ENTROPY_CURRICULUM_MARKER",
     "DEPTH_RECUR_MARKER",
+    "EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE_MARKER",
     "ENGRAM_LITE_MARKER",
     "ENTROPY_ADAPTIVE_NGRAM_MARKER",
     "GATED_ATTENTION_MARKER",

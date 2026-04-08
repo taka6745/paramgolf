@@ -1,5 +1,81 @@
 [
   {
+    "name": "L03_embdct_seed1337",
+    "pod_filter": [
+      "E"
+    ],
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "900",
+    "USE_EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE": "1",
+    "EMB_DCT_ENERGY_FRAC": "0.85",
+    "EMB_DCT_MIN_K": "8",
+    "SEED": "1337"
+  },
+  {
+    "name": "L03_embdct_seed42",
+    "pod_filter": [
+      "E"
+    ],
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "900",
+    "USE_EMB_DCT_COEFFICIENT_ENERGY_TRUNCATE": "1",
+    "EMB_DCT_ENERGY_FRAC": "0.85",
+    "EMB_DCT_MIN_K": "8",
+    "SEED": "42"
+  },
+  {
+    "name": "L02_dbec_seed1337",
+    "pod_filter": [
+      "D"
+    ],
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "900",
+    "USE_DAT_BYTE_ENTROPY_CURRICULUM": "1",
+    "SEED": "1337"
+  },
+  {
+    "name": "L02_dbec_seed42",
+    "pod_filter": [
+      "D"
+    ],
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "900",
+    "USE_DAT_BYTE_ENTROPY_CURRICULUM": "1",
+    "SEED": "42"
+  },
+  {
     "name": "L09_cpt_seed1337",
     "pod_filter": [
       "C"
