@@ -2,7 +2,8 @@
   {
     "name": "L01_tisbasic_seed42",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -23,7 +24,8 @@
   {
     "name": "L01_tisbasic_seed1337",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -80,7 +82,8 @@
   {
     "name": "L11_spdpf_seed42",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -98,7 +101,8 @@
   {
     "name": "L11_spdpf_seed1337",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -192,7 +196,8 @@
   {
     "name": "L02_dbec_seed1337",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -210,7 +215,8 @@
   {
     "name": "L02_dbec_seed42",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -557,7 +563,8 @@
   {
     "name": "L02_x_L04_gated_seed42",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -575,7 +582,8 @@
   {
     "name": "L02_coprime_stride_seed7",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -684,7 +692,8 @@
   {
     "name": "L02_coprime_stride_seed999",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -953,7 +962,8 @@
   {
     "name": "L02_coprime_stride_seed42",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -970,7 +980,8 @@
   {
     "name": "L02_coprime_stride_seed1337",
     "pod_filter": [
-      "D"
+      "D",
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",

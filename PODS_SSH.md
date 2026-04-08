@@ -27,13 +27,14 @@
 - **SSH over exposed TCP**: TBD (image only showed proxy line — request from user if proxy fails)
 - **Direct TCP**: TBD
 
-## Pod 4 — paramgolf-test-3 (RTX 3090 24 GB)
+## Pod 4 — paramgolf-test-3 (RTX 3090 24 GB) ⚠️ NETWORK OUTAGE 0720Z
 
 - **ID**: `1nqdd6aajwqofk`
 - **User hash**: `64411378`
 - **SSH proxy**: `ssh 1nqdd6aajwqofk-64411378@ssh.runpod.io -i ~/.ssh/id_ed25519`
 - **SSH over exposed TCP**: `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519`
 - **Direct TCP**: `99.69.17.69:10323 → :22`
+- **STATUS 2026-04-08 0720Z**: RunPod-side network outage. Pod is unreachable via both proxy (`100.65.19.120:2002` connect timeout) and direct TCP (`99.69.17.69:10323` network unreachable). RunPod posted: "This server has recently suffered a network outage and may have spotty network connectivity. We aim to restore connectivity soon... You will not be charged during any network downtime." **No spend impact.** Pod-D-exclusive experiments (11 entries) reassigned to `pod_filter=["D","G"]` so Pod G can pick them up. Skip Pod D in C5 sweeps until the outage clears (saves ~30s SSH timeout per fire).
 
 ## Pod 5 — paramgolf-test-4 (RTX 3090 24 GB)
 
