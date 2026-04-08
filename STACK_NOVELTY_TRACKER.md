@@ -104,6 +104,54 @@ verdict_reason: combines Huffman coding (information theory) with SentencePiece 
 phd_defensible: yes — Huffman optimality theorem motivates the prior, clear ablation against uniform init, fits a 6-page workshop paper on information-theoretic tokenization
 owner: D
 
+### TOK_entropy_patch_boundary_dynamic
+added_utc: 20260408T0426Z
+source: C30#4 — Meta BLT extension to hybrid SentencePiece
+verdict: world-novel
+verdict_reason: BLT (Meta) is tokenizer-FREE entropy patching. Applying BLT's entropy-peak boundary placement TO a SentencePiece fork to create a hybrid is unpublished.
+phd_defensible: yes — clear hypothesis (entropy peaks should not be merged), clear ablation (vs vanilla BPE-8192), workshop paper feasible
+owner: D
+
+### TOK_morphology_aware_segmentation_fine_grain
+added_utc: 20260408T0426Z
+source: C30#4 — Slovak SKMT 2025 + LiteToken dedup
+verdict: world-novel
+verdict_reason: morphological BPE has been studied for highly inflected languages but never for English byte-LMs at the 1024-vocab scale; combination with LiteToken's residue removal is novel.
+phd_defensible: yes
+owner: D
+
+### TOK_adaptive_vocab_gradient_aware_training
+added_utc: 20260408T0426Z
+source: C30#4 — Rho-1 + GPTQ Hessian fusion
+verdict: world-novel
+verdict_reason: tokenizer joint training is itself nascent; using GPTQ-style Hessian/Fisher info to rank merge candidates is unique. No paper combines them.
+phd_defensible: yes — full architectural novelty + theoretical grounding (Fisher info connects to learning dynamics)
+owner: D
+
+### CMP_vq_learned_codebook_multilayer
+added_utc: 20260408T0426Z
+source: C30#4 — ERVQ + ICCV 2025
+verdict: world-novel
+verdict_reason: residual VQ exists for images/audio. Applying multi-stage RVQ with per-layer codebook training to byte-LM transformer weights is novel.
+phd_defensible: yes
+owner: G/Mac
+
+### CMP_asymmetric_numeric_systems_neural_prior
+added_utc: 20260408T0426Z
+source: C30#4 — rANS + RAS + custom hybrid
+verdict: world-novel
+verdict_reason: rANS is standard; the novelty is the LEARNED prior conditioned on (layer, position, value). No published work uses a neural prior for rANS in LM weight compression.
+phd_defensible: yes — connects to context-mixed entropy coding theory
+owner: G/Mac
+
+### CMP_tensor_train_int4_cores_mixed_precision
+added_utc: 20260408T0426Z
+source: C30#4 — PicoGPT TT/MPO + mixed-precision GPTQ
+verdict: world-novel
+verdict_reason: TT decomposition for inference exists; mixing int4/int5 across the cores by importance and using one-shot post-hoc decomposition (no retraining) for byte-LM is unpublished.
+phd_defensible: yes
+owner: G/Mac
+
 ### CMP_mixed_precision_per_layer_alloc
 added_utc: 20260408T0349Z
 source: C30#3 — ITERA-LLM arXiv:2505.08981 + Hessian sensitivity
