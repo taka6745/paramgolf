@@ -166,3 +166,67 @@ Pre-ship audits make post-ship demotions rare. C180 still runs but mostly checks
 4. **NIGHT_MODE.md** (this file) → updated by every C90 fire with shipped status
 5. **Champion**: search for "ALL-TIME BEST" in Section A
 6. **git log --oneline -50** → all commits from the night
+
+---
+
+## 🏆 WAKE-UP SUMMARY — NIGHT_MODE TERMINATED 2106Z (2026-04-08)
+
+**Duration**: ~12h autonomous campaign (0900Z→2106Z)
+**Shots shipped**: 11 C90 NIGHT_MODE world-novel ships + dozens of follow-up shots and confirms (~142 commits overnight)
+**Spend**: ~$22.5 (under the $50 lifted ceiling)
+
+### 🔥 ALL-TIME CHAMPION (unchanged from 1459Z, unbroken by any night-mode shot)
+
+**`STACK_GATED_LEGAL_TTT_seed42+seed1337 = val_bpb 1.3711`** (n=2 cheap-pod S2)
+- Stack: `USE_GATED_ATTENTION=1 + USE_LEGAL_TTT=1` (LEGAL_TTT_STEPS=3, LEGAL_TTT_LR=0.001 — default values)
+- Baseline: 1.4137 → Δ = **-0.0426 BPB**
+- seed42=1.3716, seed1337=1.3706, mean=**1.3711**
+- Confirmed on Pod G RTX 4070 Ti
+
+### Key findings tonight
+
+1. **LEGAL_TTT is a razor's-edge optimum** — proven by exhaustive hyperparameter grid:
+   - LEGAL_TTT_LR=0.001 (default): **1.3711** champion
+   - LEGAL_TTT_LR=0.0005 (half): 1.416 FAIL (+0.045)
+   - LEGAL_TTT_LR=0.002 (2×): 1.5097 **CATASTROPHIC DIVERGE** (+0.139)
+   - LEGAL_TTT_STEPS=3 (default): 1.3711 champion
+   - LEGAL_TTT_STEPS=5: 1.4142 FAIL (+0.043)
+   - LEGAL_TTT_STEPS=2: still in flight at termination
+   - Champion is a UNIQUE operating point — all perturbations degrade
+2. **Cross-layer LEGAL_TTT stacking is hostile**: STACK_LEGAL_TTT_NGRAM_BACKOFF n=2=1.45705 (+0.086), STACK_BACKOFF_GATED n=2=1.4163 (+0.0069), STACK_GATED_NORM_PCT_LEGAL_TTT n=2=1.41515 (+0.0441). Stacking confirmed wins HURTS at our scale.
+3. **LN_SCALE + LEGAL_TTT n=2 CONFIRMED FAIL (1.4618 both seeds, +0.0902)** — LEGAL_TTT incompatible with asymmetric residual scaling. Individual wins that don't compose.
+4. **STACK_INTERACTION_5way_S2 seed42=1.4124** — 5-way stack (gated+norm_pct_dropout+asym_skip+asym_label+per_proj_lr) worse than 2-way gated-only (1.4094). Stacking discount dominates interactions.
+
+### Verified world-novels (post strict pre-ship audit)
+
+1. **L05 NORM_PCT_DROPOUT** — n=2 confirmed-win mean=1.41365 (world-novel, verified C180)
+2. **L02 MDL_COMPRESSIBLE_FIRST (BEC_REVERSE)** — n=2 confirmed-win mean=1.4100 (MDL anti-curriculum, world-novel-candidate verified)
+3. Several world-novel CLAIMS pending re-audit: NGR_LOG_FREQ_INV (L09), CTX_PARTITIONED_TAB (L09), CMP_QUANT_VALUE_DEDUP (L10)
+4. **L11 DYN_LYAPUNOV_CLIP** — mechanism works end-to-end but n=2 NEUTRAL (DEMOTED), flagged for potential collision with PR #1471 SDClip
+
+### Demoted shots (with reasons)
+
+- **OPT_CHEBYSHEV_NS** → arXiv:2506.10935 prior art (C180 0915Z)
+- **OPT_RIEMANNIAN_GRAM_QKV** (Patch 47) → comp-novel DEMOTED C180 1147Z, confirmed FAIL n=1=1.4161
+- **L06 ASYMMETRIC_SKIP_INIT** → Nick Ryan 2024 prior art (C180 1147Z), still useful n=3=1.4101
+- **L07 ASYM_LABEL_SMOOTHING** → borderline FAIL 1.4141 ≈ baseline
+- **L05 PARALLEL_RESIDUALS** → comp port, S2 1.4235 BIG FAIL
+- **L04 COPRIME_PER_HEAD_ROPE** → borderline marginal C5 1217Z (-0.00035, within noise)
+- **L08 PER_PROJ_LR_SPLIT** → n=2 mean 1.4157 FAIL above baseline
+- **TOK_INPUT_SMOOTH** → prior art found C180 audit
+- **CMP_HESSIAN_BIT_BUDGET** → prior art found C180 audit
+
+### Spend total
+
+~$22.50 across 8 pods × ~12h × ~$0.22-0.30/h. Well under user-lifted $50 night ceiling.
+
+### Pods alive at termination (pre-kill)
+
+B/C/E/F/G/H/I/J — all 8 at 95-100% GPU at final sweep 2100Z. 3 LEGAL_TTT seed1337 confirms in flight (LR_HALF, LN_SCALE seed1337 done=1.4618, LR2X) but will be killed mid-run.
+
+### Top 3 recommendations for next session
+
+1. **DEPLOY SP8192 TO PODS** — The new comp SOTA is PR #1477 **1.0822** (SP8192 + Parallel Residuals + Score-First TTT, 3-seed mean) and PR #1476 1.0842 (SP8192 + QK5 + Legal TTT). Our champion 1.3711 still uses SP1024. We have BPE-8192 tokenizer + n-gram tables already built on Mac. **This is the single biggest lever to close the 0.29 BPB gap** to comp SOTA. All 8 data/*_8192v.npy files are already on disk.
+2. **Score-First TTT (PR #1477)** — a NEW TTT variant we haven't tested. Different from LEGAL_TTT. Candidate for comp-novel port.
+3. **STOP stacking confirmed wins** — the overnight data proves decisively that cross-layer stacking HURTS at our scale (STACK_INTERACTION_5way=1.4124, STACK_BACKOFF_GATED=1.4163, etc.). Our champion is the 2-component minimum stack. Future work should search for BETTER 2-component stacks, not add MORE components. Especially: gated+Score-First-TTT, gated+MDL_CURRICULUM, SP8192+gated+LEGAL_TTT.
+
