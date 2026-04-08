@@ -371,6 +371,26 @@ verdict_reason: Jina applies spherical coordinate compression to RETRIEVAL embed
 phd_defensible: yes — clear hypothesis (byte-vocab tight cluster on sphere), entropy-adaptive bin theory, workshop paper feasible
 owner: E
 
+### DEMOTION: CMP_HESSIAN_BIT_BUDGET → comp-novel
+demoted_utc: 20260408T0915Z
+demoted_at: C180 audit 0915Z re-check
+reason: HAWQ (ICCV 2019, NIPS 2020, ICML 2021) + GPTQ variants with per-tensor/per-layer quantile selection are published. Hessian-based quantization with adaptive bit/clip allocation is established SOTA technique.
+citations: HAWQ repo https://github.com/Zhen-Dong/HAWQ; GPTQ; PTQ literature 2019-2025
+new_verdict: comp-novel (still useful, just not world-first)
+
+### DEMOTION: TOK_INPUT_SMOOTH → comp-novel
+demoted_utc: 20260408T0915Z
+demoted_at: C180 audit 0915Z re-check
+reason: Input-side embedding smoothing/data augmentation documented in "Unifying Input and Output Smoothing in NMT" (COLING 2020), "Masked Label Smoothing for MT" (ACL 2022). Random vocabulary mixture augmentation is published.
+new_verdict: comp-novel — implementation detail (random-K vocab mix) may be unique but underlying technique is established.
+
+### DEMOTION: OPT_CHEBYSHEV_NS → comp-novel
+demoted_utc: 20260408T0915Z
+demoted_at: C180 audit 0915Z re-check
+reason: Published as CANS (Chebyshev-optimized Newton-Schulz) in arXiv:2506.10935v1 (Jun 2025), explicitly describing 3-step Chebyshev-optimized replacement for Muon's 5-step orthogonalization. THE SAME PAPER I cited as "source/inspiration" — I was wrong to call it world-novel-candidate; I should have flagged it as comp-novel from the start.
+citations: arXiv:2506.10935
+new_verdict: comp-port (the source paper IS the technique)
+
 ### NRM_adaptive_resid_gating
 added_utc: 20260408T0545Z
 source: C30#5 — Qwen NeurIPS 2025 Gated Attention (arXiv:2505.06708) + control theory (Peri-LN stability) + byte-LM cross-domain synthesis

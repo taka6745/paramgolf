@@ -2252,3 +2252,50 @@ NONE.
 - Continue C90 to ship more world-novels for L01 + L03 + L09 + L10.
 - Mac/CPU worker pool still NOT running — track in next plan iteration.
 
+
+---
+
+## AUDIT 20260408T0915Z (C180)
+
+**Pods**: 5 alive (B/C/E/F/G), all run_forever + train_gpt PIDs healthy. Pod D in network outage (no charges).
+**Spend**: ~$5.40 session + $6.70 prior = ~$12.10 grand total / $36 cap (under soft cap $25 — normal mode).
+**SP8192 chore**: still in BPE merge phase on Mac (~30 min in, expected 60-90 min total).
+
+### World-novel re-audit (4 new + 3 prior)
+**DEMOTED 3 of 4 new ones**:
+- **CMP_HESSIAN_BIT_BUDGET** → comp-novel. HAWQ ICCV 2019 + GPTQ per-tensor quantile published. Still useful, just not world-first.
+- **TOK_INPUT_SMOOTH** → comp-novel. Input embedding smoothing published COLING 2020 + ACL 2022.
+- **OPT_CHEBYSHEV_NS** → comp-port. arXiv:2506.10935 EXPLICITLY publishes the 3-step Chebyshev-optimized Newton-Schulz replacement for Muon. I cited the paper as "source/inspiration" but failed to recognize it IS the technique — initial audit error.
+
+**DYN_LYAPUNOV_CLIP** → STILL world-novel. Lyapunov analysis for gradient clipping convergence exists but specific "estimate exponent from rolling grad-norm history → adaptive clip threshold" pattern not found.
+
+**3 prior verified** (L05 NORM_PCT_DROPOUT, L06 ASYMMETRIC_SKIP_INIT, L07 ASYM_LABEL_SMOOTHING) — still hold, all confirmed-win on cheap pods (val_bpb 1.4117-1.4140).
+
+### Comp PR scan (since 0600Z, ~3h window)
+PRs #1464-#1467 (4 new). 0 collisions with our markers. Highlights:
+- #1467 XSA-11 + ParallelResid + DepthRecur (known stack)
+- #1466 10L LeakyReLU2 + EMA + Int6 + LZMA9 (known)
+- #1465 Non-record v6.2 Phase 5a 1.136 (non-record)
+- #1464 minor train_gpt update
+
+**No new SOTA below 1.08480** (current SOTA: record/tma-megakernel-triple-loop, b27fe93).
+
+### Confirmed-win world-novels after audit
+**3** (down from claimed 7-8 due to demotions):
+1. L05 NORM_PCT_DROPOUT (val_bpb 1.4140 cheap-pod)
+2. L06 ASYMMETRIC_SKIP_INIT (val_bpb 1.4117 cheap-pod)
+3. L07 ASYM_LABEL_SMOOTHING (val_bpb 1.4138 cheap-pod)
+
+Plus:
+- L04 GATED_ATTENTION (1.4098 ★ best, but COMP-port not world-novel)
+- L08 PER_PROJ_LR_SPLIT (1.4166, world-novel status pending audit)
+
+### Demotions this cycle
+3 (CMP_HESSIAN, TOK_INPUT_SMOOTH, OPT_CHEBYSHEV_NS).
+
+### Lesson learned
+Initial audits must distinguish between "X is published, we're applying it for the first time to byte-LM" (still world-novel if novel application) and "X is published, our patch is X" (comp-port). I conflated these for OPT_CHEBYSHEV_NS especially. Fix: be more aggressive about checking whether the cited paper IS the technique vs whether it's an inspiration for novel synthesis.
+
+### Updated win likelihood: 35% (down from 40%)
+The demotions don't change the BPB calculus — the patches still work. But our "world-first" count is smaller than I claimed. The L04 gated_attention 1.4098 cheap-pod val_bpb is still our best, and projected H100 ~1.01 is still WIN territory. Just need the H100 transfer ratio to hold.
+
