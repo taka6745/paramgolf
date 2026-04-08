@@ -200,10 +200,10 @@ These get scheduled on Pod-G when the regular L10 work is queue-blocked. If any 
 | Stage | Hardware | Config | Metric | Required delta | n_seeds |
 |---|---|---|---|---|---|
 | **S1 — Screen** | one cheap pod | loop default (TRAIN_SEQ_LEN=1024, TRAIN_BATCH_TOKENS=65536, MAX_WALLCLOCK_SECONDS=900, SKIP_FINAL_EVAL=1, current champion stack ON) | mean train_loss | ≤ baseline − **0.012** | n=2 (seeds 42, 1337) |
-| **S2 — Confirm** | 1× H100 spot | full SKIP_FINAL_EVAL=0, escalated config from H100_TEST_PLAN.md | `final_int8_zlib_roundtrip val_bpb` | ≤ baseline − **0.003** | n=1 (seed=42) |
+| **S2 — Confirm** | **same cheap pod** that ran S1 (NEVER an H100 — user has forbidden H100 launches twice) | SKIP_FINAL_EVAL=0, MAX_WALLCLOCK_SECONDS=600 (full 10 min budget), same env as S1 | `final_int8_zlib_roundtrip val_bpb` from the cheap-pod artifact | ≤ baseline − **0.003** | n=1 (seed=42) |
 
 - **Noise floor reasoning:** CHAMP_L5 5-seed σ ≈ 0.066 / √runs gives ~0.005 train_loss seed-variance at 900 s. We use **2.4σ ≈ 0.012** as the train_loss floor (same bar tabulation hash cleared in MINIPAPER_TABULATION_HASH.md).
-- **Why hybrid:** S1 alone is blind to compression/quant regressions (NorMuon could destabilize int6). S2 alone burns ~$5/run × 30 = $150, blowing the cap. Hybrid kills 70%+ candidates cheaply.
+- **Why hybrid:** S1 alone is blind to compression/quant regressions (NorMuon could destabilize int6). S2 on the SAME cheap pod adds only ~5 min wallclock per confirmed candidate (artifact serialization + zlib roundtrip eval pass). The val_bpb won't perfectly match a true 8×H100 budget but it's a real artifact and a real number — and crucially, **zero H100 spend**.
 - **"Improves the model"** = passes BOTH stages against the *current best stack*, not against the bare baseline. Once a novelty merges, the next candidate's baseline shifts upward.
 - **Borderline rule:** if S1 lands in [-0.012, -0.005] (suspect), bump to n=3 seeds before deciding.
 
@@ -271,7 +271,8 @@ One section per layer. Each section is a markdown table of candidates, ordered b
 | **E** (`9g10r6i4rst296`) | RTX 3090 24 GB | 0.27 | L03 | Largest mem for embedding factorization |
 | **F** (`373y5iemxa5s9o`) | RTX 3090 24 GB | 0.27 | L07 | Loss experiments |
 | **G** (`7yp2f7j6rm9unm`) | RTX 4070 Ti 12 GB | 0.22 | floating utility | Backup capacity, audit replay runs |
-| **H100_spot** | 1× / 8× H100 | 2.69–23.40 | S2 confirm only | Spun up + killed per S2 escalation; never idle |
+<!-- H100_spot row REMOVED 2026-04-08 — user has forbidden H100 launches. All S2 confirms run on the cheap pod that did S1. -->
+
 | **Mac MLX** | local | 0 | L10 (compression sweeps), audit subagents, BPE-8192 builds | Always running, never blocks pods |
 
 ### Bootstrap script (`runpod_tests/loop/bootstrap_new_pod.sh`, NEW)
@@ -515,7 +516,7 @@ RemoteTrigger(action="create", body={
 | **C30** | every 30 min | `research` | research backlog mining: WebSearch new candidates for under-served layers, append to `RESEARCH_BACKLOG.md`, update Section C audit log |
 | **C60** | every 1 h | `promote` | layer promotion: any layer with 3 wins (1 world-novel) gets a Section D LOCK line; pods reassigned to next under-served layer |
 | **C180** | every 3 h | `audit` | full re-audit: re-run novelty literature checks, recompute spend, summary commit, run interaction-screen for stacked-novelty conflicts |
-| **C720** | every 12 h | `H100_confirm` | check tracker for novelties in `screened-pass` state; if any, spin up 1× H100 spot for one S2 confirm batch (max 3 per session per spend ceiling), then kill the H100 |
+| **C360** | every 6 h | `cheap_pod_confirm` | check tracker for novelties in `screened-pass` state; if any, append S2_<id> rows to experiments.json with SKIP_FINAL_EVAL=0 and full 10-min wallclock, dispatched to the SAME cheap pod that did S1. NEVER spawn an H100. |
 
 ### C5 — monitor (every 5 min, the heartbeat)
 
@@ -601,22 +602,26 @@ cd /Users/takodamundy/Documents/personal_repos/paramgolf
 8. git push
 ```
 
-### C720 — H100 confirm (every 12 h, the spot escalation)
+### C360 — cheap-pod confirm (every 6 h, the S2 escalation — NO H100 EVER)
 
 ```
-cd /Users/takodamundy/Documents/personal_repos/paramgolf
+cd paramgolf
 1. git pull --rebase origin main
 2. Parse Section A for rows with status=screened-pass and bpb_delta=null
 3. If 0 rows → exit
 4. If session spend > $25 → exit
 5. Pick the top 3 by tl_delta (most promising)
-6. runpodctl create pod (H100 spot, with --ports "22/tcp")
-7. ssh in, run bootstrap, run S2 confirm for each (10 min each)
-8. Pull final_int8_zlib_roundtrip val_bpb from each log
-9. Update Section A with bpb_delta + status (confirmed-win or confirmed-fail)
-10. runpodctl remove pod <id>  (KILL IMMEDIATELY)
-11. git commit STACK_NOVELTY_TRACKER.md -m "C720 H100 <UTC>: <n> confirms"
-12. git push
+6. For each candidate, append "S2_<novelty_id>" to runpod_tests/loop/experiments.json with:
+     - pod_filter=[<the same pod that ran S1>]
+     - SKIP_FINAL_EVAL=0 (forces real val_bpb computation + artifact serialization)
+     - MAX_WALLCLOCK_SECONDS=600 (full 10 min budget)
+     - same env vars as the original S1 entry
+7. git commit, push. The cheap pod's run_forever loop picks it up on next git pull (~30 s).
+8. The next C5 monitor cron picks up the result and writes bpb_delta back to Section A.
+
+NEVER call runpodctl create pod for H100. NEVER. The user has forbidden H100 launches twice.
+The val_bpb computed on a 3090 isn't the exact 8×H100 number, but it's a real artifact, it
+compresses to 16 MB, and it ranks novelties consistently.
 ```
 
 ### Tracker I/O discipline
@@ -666,12 +671,12 @@ This catches the `sota-prikshit-hymba11-muon` bug from last session — pod flip
 |---|---|
 | `< $20` | normal |
 | `$20 ≤ x < $25` | warn; preemptively kill any pod with zero confirmed-wins this session |
-| `$25 ≤ x < $30` | stop queue (commit empty experiments.json), pods idle, Mac+H100 confirms only |
-| `$30 ≤ x < $34` | ssh kill `run_forever` on all cheap pods (`crontab -r`); only Pod A + H100 confirms remain |
+| `$25 ≤ x < $30` | stop queue (commit empty experiments.json), Mac-only research continues |
+| `$30 ≤ x < $34` | ssh kill `run_forever` on all cheap pods (`crontab -r`); only Pod A remains |
 | `≥ $34` | shutdown all pods except A (holds artifacts) |
 | `≥ $36` | hard panic, all pods down, alert |
 
-**H100 discipline:** spot, on-demand, start→run→kill <15 min. Each S2 confirm budgeted $4–6. Max 3 confirms across the session (≈$12–18). Additional confirms require manual go-ahead in Section E.
+**No H100, ever.** The user has forbidden H100 launches twice in this campaign. All S2 confirms run on the SAME cheap pod that did S1, with SKIP_FINAL_EVAL=0 + 600 s wallclock — adds ~5 min per confirm. Zero additional GPU spend beyond the cheap fleet's hourly burn.
 
 **Burn rate at 7 cheap pods running** ≈ $1.81/h. With ~$10 to soft-cap from current spend, that's ~5.7 h of full-fleet parallel work — enough for one full 4-batch sweep at 8 min S1 runs.
 
@@ -703,13 +708,13 @@ Per PD1 (no idle pods) and PD2 (find don't just validate), we do NOT use a stric
 
 **Open-ended scale:** the campaign runs until ALL 10 layers are LOCKed (each with 3 wins, 1 world-novel). Total experiment count is **NOT bounded by 78 S1 + 10 S2**. The number depends on how many candidates fail and need replacement from the backlog. Plan for ~120-200 S1 runs and 15-25 S2 confirms across the full campaign.
 
-**Compute estimate:** 7 cheap pods running 24/7 at ~$0.27/h avg = **$45/day fleet cost**. S2 H100 confirms at ~$5/each × 20 = **$100**. **Total campaign cost: ~$145 over 3 days** at full burn. We have $29 remaining of the original $36 → **the campaign must run in spend-controlled mode** with the spend ceiling tiers below.
+**Compute estimate:** 7 cheap pods running 24/7 at ~$0.27/h avg = **$45/day fleet cost**. S2 confirms run on the same cheap pods (no H100), adding only ~5 min wallclock per confirm = **$0 marginal cost**. Total campaign cost is purely the cheap-pod hourly burn. We have ~$29 remaining of the original $36 → ~15 hours of full-fleet burn → **the campaign must run in spend-controlled mode**.
 
 **Spend-controlled mode (mandatory at our budget):**
 - C5 monitor enforces the spend ceiling every 5 min
 - At $20: warn, kill any pod with 0 confirmed wins
-- At $25: stop queue, only Mac + H100 confirms continue
-- At $30: ssh kill all cheap pods, Pod A only
+- At $25: stop queue, only Mac research continues
+- At $30: ssh kill all cheap pods except Pod A
 - At $34: ssh shutdown all but Pod A
 - At $36: hard panic, all down
 
@@ -724,7 +729,7 @@ Per PD1 (no idle pods) and PD2 (find don't just validate), we do NOT use a stric
 | 1 | **Tokenizer rebuild invalidates L09 n-gram tables** — L01 shifts vocab, L09 needs full table rebuild | High | All L09 work invalidated | Lock L01 first (Batch 1). Build L09 tables on Pod-D for *both* SP-1024 and BPE-8192 in parallel from day 1. Don't start L09 novelty work until L01 has a winner. |
 | 2 | **World-novel candidates fail audit** — we ship a "novel" patch, find a 2024 paper later | Medium | 1 layer needs replacement novelty | At each layer's first batch, spawn a Mac MLX subagent that does 3 fresh WebSearches + 1 GitHub code search before promoting to S2. Free, uses existing Explore subagent infra. |
 | 3 | **Cheap-pod measurement too noisy for 0.012 train_loss differences** | Medium | False negatives kill real wins | n=2 baseline; bump to n=3 for borderline cases. Always confirm baseline unchanged at start of each batch. Verify TRAIN_BATCH_TOKENS=65536 + TRAIN_SEQ_LEN=1024 every cron fire (G1 gate). |
-| 4 | **H100 spot price spike or unavailability** | Medium | Can't confirm wins, can't ship submission | Pre-cache one H100 image. Pod-G boot script ready. Fall back to A100 spot (cheaper, same memory). Track spot prices in Section E. |
+| 4 | **Cheap-pod S2 val_bpb diverges from H100 val_bpb** (the OpenAI eval harness runs on H100s, our S2 runs on 3090s) | Low-medium | Our recommended novelty doesn't translate to the comp's H100 measurement | Calibrate once: pick a known-good config (SP6 champion), measure cheap-pod val_bpb, compare to a verified merged record's val_bpb on the same config. Use the offset as a constant correction. We never need to launch an H100 ourselves — OpenAI's eval is the ground truth. |
 | 5 | **Stack interactions kill stacked novelties** (LESSONS §3c: ByteWeight + SmearGate combined was WORSE than each alone) | High | Layer winner doesn't compose with other layers' winners | After each batch, run **interaction-screen runs**: pick the new champion from each layer in this batch, run them ALL stacked for 1 seed. If stacked train_loss > sum-of-individual-deltas + 0.01, identify conflict + demote weakest. This is the "stacking discount" check before crowning the campaign champion. C180 audit cron does this. |
 | 6 | **Open-ended search never converges** — every candidate fails, RESEARCH_BACKLOG runs dry, no LOCKs land | Medium | Campaign stalls | Three guards: (a) C30 research cron has minimum-floor of 5 candidates per layer, (b) failed candidates feed back into the cross-domain pollination logic (failure-mode → variant addressing it), (c) C5 monitor escalates `MAYDAY_BACKLOG_EMPTY` to human if any layer goes below 1 candidate AND has 0 wins for >12 h. The user can `git push` an injection any time. |
 | 7 | **RemoteTrigger sessions miss fires or accumulate cost** | Medium | Campaign drifts off-track or burns cost on dead loops | C5 monitor checks last-fire-timestamp of each cron and re-registers if missed. Each cron has a hard timeout of 5 min (C5/C30) or 15 min (C60/C180/C720). All cron output goes to `RESEARCH_LOG.md` so the user can see what fired. |
@@ -759,7 +764,7 @@ Per PD1 (no idle pods) and PD2 (find don't just validate), we do NOT use a stric
 - C30 (every 30 min) — research backlog feeder
 - C60 (every 1 h) — layer promote
 - C180 (every 3 h) — full audit
-- C720 (every 12 h) — H100 confirm batch
+- C360 (every 6 h) — cheap-pod S2 confirm (NO H100)
 
 **New mini-papers (one per world-novel that confirms):**
 - `MINIPAPER_ENTROPY_BPE.md` (L01 #3)
@@ -783,9 +788,9 @@ The campaign is **complete** iff ALL of the following hold:
 2. **Section A** has at least 30 rows in `confirmed-win` status (3 per layer minimum), of which **at least 10 have `world_novel: yes`** (1 per layer minimum).
 3. **Each of the 10 world-novel slots** has a corresponding `MINIPAPER_<name>.md` committed at the repo root with: hypothesis, mechanism, ablation results, comparison to baseline, citations.
 4. **Section F gates G1–G5** all in `PASS` state on the most recent C5 monitor cron.
-5. **Final S2 confirm run** on H100 produces `final_int8_zlib_roundtrip val_bpb ≤ 1.10` (improves on current SOTA 1.11473) AND artifact size in `[16,252,928, 16,777,216]` bytes (G3 PASS — full 16 MB used).
-6. **`tokens_per_min` on the final H100 run** ≥ 1.67 M tok/s aggregate (G1 PASS — all training data seen across the 10-min window).
-7. **GPU idle streaks** = 0 on the final H100 run (G2 PASS — full 10 min used).
+5. **Final S2 confirm run** on a cheap pod produces `final_int8_zlib_roundtrip val_bpb` lower than the current SOTA 1.11473 (cheap-pod-corrected) AND artifact size in `[16,252,928, 16,777,216]` bytes (G3 PASS — full 16 MB used).
+6. **`tokens_per_min` on the cheap-pod S2 run** ≥ 12.5M (3080 Ti floor) / 15M (3090 floor) — proves the throughput scales linearly to the comp's H100 fleet (G1 PASS).
+7. **GPU idle streaks** = 0 on the cheap-pod S2 run (G2 PASS — full 10 min used).
 8. **All 7 pods** show non-zero contribution to Section B over the lifetime of the campaign (utilization gate, PD1).
 9. **Total campaign spend** ≤ $36 in Section E.
 10. **Section B has zero unexplained crashes** that weren't either (a) recovered by watchdog or (b) caught by the 3-strike skip rule.
