@@ -19,6 +19,11 @@ See `STACK_NOVELTY_PLAN.md` for the full schema spec and the RemoteTrigger paylo
 | L04_attention | 1 | L04_gated_attention | no | **n=3 PROMOTION-READY** | -0.61 mean (seeds 42/1337/7 = 2.2295/2.2219/2.2485, mean=2.2333) |  | G | 20260408T0356Z |
 | L02_data | 1 | L02_coprime_stride | no | **n=3 PROMOTION-READY** | -0.36 mean (seeds 42/1337/999 = 2.6818/2.5347/2.2193, mean=2.4786 — seed999 was huge improvement) |  | D | 20260408T0356Z |
 | L09_ngram | 1 | L09_entropy_adaptive | no | **n=2 PROMOTION-READY** | -0.45 mean (seeds 42/7 = 2.5201/2.2579, mean=2.389) |  | C | 20260408T0356Z |
+| INTERACTION_L08_x_L04 | - | normuon × gated_attention | no | screened-pass | -0.61 (seed42=2.2336) |  | B | 20260408T0420Z |
+| INTERACTION_L09_x_L08 | - | entropy_adaptive × normuon | no | screened-pass | -0.58 (seed42=2.2565) |  | C | 20260408T0420Z |
+| INTERACTION_L02_x_L04 | - | coprime_stride × gated_attention | no | screened-pass | -0.61 (seed42=2.2266) |  | D | 20260408T0420Z |
+| INTERACTION_L07_x_L04 | - | byte_weight × gated_attention | no | screened-pass | -0.61 (seed42=2.2264) |  | F | 20260408T0420Z |
+| STACK_4WAY_L04_L08_L07_L06 | - | gated+normuon+byte_weight+ln_scale STACKED | no | screened-pass | -0.61 (seed42=2.2303, NO interaction penalty) |  | G | 20260408T0420Z |
 | L09_ngram | 1 | L09_entropy_adaptive | no | screened-pass | -0.32 (2.5201 @ step 1300) |  | C | 20260408T0257Z |
 | L06_norm | 1 | L06_ln_scale | no | **n=3 PROMOTION-READY** | -0.54 mean (seeds 42/1337/999 = 2.4622/2.2217/2.2204, mean=2.30143) |  | E | 20260408T0345Z |
 | L05_ffn | 1 | L05_parallel_residuals | no | screened-pass | -0.60 (2.2387 @ step 1400, n=1, awaiting seed1337) |  | G | 20260408T0334Z |
