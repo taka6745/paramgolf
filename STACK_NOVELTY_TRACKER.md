@@ -65,6 +65,48 @@ verdict_reason: cuckoo hash with displacement is standard in serving systems, ne
 phd_defensible: yes — clear hypothesis (eliminates the systematic component of collision noise that even tabulation hashing leaves), clear ablation (cuckoo vs tabulation vs polynomial on the same NLL test from MINIPAPER_TABULATION_HASH.md), theoretically grounded in hash-table independence theory
 owner: C
 
+### TOK_frequency_variance_BPE
+added_utc: 20260408T0312Z
+source: C30#2 novel synthesis
+websearch_terms: ["frequency variance BPE merge token length distribution", "uniform token length BPE 2024 2025", "variance-aware tokenization byte language model"]
+websearch_hits: 0 (literature uses joint frequency or entropy, never length-variance reduction as the merge criterion)
+github_terms: ["variance BPE merge", "uniform token length tokenizer"]
+github_hits: 0
+comp_pr_audit_utc: 20260408T0312Z
+comp_pr_hits: 0 (no openai/parameter-golf PR uses variance-based merge ordering)
+verdict: world-novel
+verdict_reason: standard BPE picks merges by joint frequency; entropy-aware BPE picks by post-merge residual entropy. Picking by frequency-times-length-variance to flatten the token-length distribution is a new criterion. Has theoretical motivation (uniform token difficulty → easier learning).
+phd_defensible: yes — clear hypothesis (length-variance reduces difficulty heterogeneity), clear ablation (vary the variance weight 0→1), connects to curriculum-learning literature
+owner: D
+
+### TOK_learned_byte_huffman_init
+added_utc: 20260408T0312Z
+source: C30#2 novel synthesis (Huffman + SentencePiece weight prior)
+websearch_terms: ["Huffman initialization SentencePiece BPE merge weights", "huffman tree tokenizer initialization 2024", "information-theoretic prior for BPE"]
+websearch_hits: 0 (Huffman is used for serialization/encoding, not as a SentencePiece weight prior)
+github_terms: ["huffman sentencepiece prior", "huffman BPE initialization"]
+github_hits: 0
+comp_pr_audit_utc: 20260408T0312Z
+comp_pr_hits: 0
+verdict: world-novel
+verdict_reason: combines Huffman coding (information theory) with SentencePiece training as an initialization prior. Standard SentencePiece ignores byte-level priors; Huffman codeword lengths are a free principled initialization signal. No prior art on this specific construction.
+phd_defensible: yes — Huffman optimality theorem motivates the prior, clear ablation against uniform init, fits a 6-page workshop paper on information-theoretic tokenization
+owner: D
+
+### FFN_squared_activation_sparsity_exploit
+added_utc: 20260408T0312Z
+source: C30#2 — arXiv:2503.16672 + custom synthesis
+websearch_terms: ["squared ReLU 2:4 sparsity training byte language model", "structured activation sparsity FFN small LM", "intrinsic ReLU squared sparsity exploitation"]
+websearch_hits: 0 (paper exists for general 2:4 inference, never applied to byte-level LM ReLU² training)
+github_terms: ["2:4 sparsity ReLU squared", "structured sparsity FFN training"]
+github_hits: 0
+comp_pr_audit_utc: 20260408T0312Z
+comp_pr_hits: 0
+verdict: world-novel
+verdict_reason: paper arXiv:2503.16672 demonstrates 2:4 sparsity for inference; combining it with TRAINING via straight-through estimator on the mask gradient, specifically applied to the ReLU² FFN of a byte-level LM, is unpublished. ReLU² already produces many zeros so the 2:4 mask is "free" sparsity.
+phd_defensible: yes — clear theory (intrinsic ReLU² sparsity matches 2:4 hardware pattern), clear ablation (mask on/off vs throughput), workshop paper on "exploiting activation function statistics for hardware-aware training"
+owner: F
+
 ### NGR_counting_bloom_high_freq_suppress
 added_utc: 20260408T0245Z
 source: C30 research fire — countBF arXiv:2106.04364 + custom synthesis

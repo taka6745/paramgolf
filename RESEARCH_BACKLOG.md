@@ -22,6 +22,9 @@ Schema for every row:
 | 1 | TOK_bpe8192_standard | LESSONS §18c | BPE-8192 with frequency merges; Mac claims -0.129 BPB at 500 steps; tables exist on disk but never built for vocab=8192 | -0.05 to -0.13 BPB | comp-novel | 30 (tokenizer swap + table rebuild script) | 20260408T0000Z |
 | 2 | TOK_vocab512_compact | inverted §33 logic | smaller vocab → bigram coverage densifies → more bias signal per byte | -0.01 BPB net (after n-gram tables grow) | comp-novel | 25 | 20260408T0000Z |
 | 3 | TOK_entropy_aware_bpe_merge | Plan-A WebSearch + extension of LESSONS §18c | merge pairs whose joint distribution has lowest residual joint entropy after merge → maximize compression of bigram surprise into vocab | -0.05 train_loss vs vanilla BPE-8192 | world-novel-candidate | 80 (custom sentencepiece training loop) | 20260408T0000Z |
+| 4 | TOK_dynamic_byte_codepoint_merger | C30#2 — ByteFlow arXiv:2603.03583 extension | compute next-byte entropy per position online; place merge boundaries where prediction entropy is highest (hard-to-predict bytes don't merge) | -0.04 to -0.08 BPB | comp-novel | 90 | 20260408T0312Z |
+| 5 | TOK_frequency_variance_BPE | C30#2 novel synthesis | merge pairs by frequency × variance ratio: prioritize merges that REDUCE variance in token-length distribution → more uniform token difficulty across vocab | -0.015 BPB | **world-novel-candidate** | 65 | 20260408T0312Z |
+| 6 | TOK_learned_byte_huffman_init | C30#2 novel synthesis (Huffman + SentencePiece weight prior) | build Huffman tree on FineWeb byte frequencies; codeword lengths become initialization signal for SentencePiece merge weights → biases vocab toward info-theoretic optimality | -0.02 to -0.05 BPB | **world-novel-candidate** | 75 | 20260408T0312Z |
 
 ---
 
@@ -67,6 +70,9 @@ Schema for every row:
 | 1 | FFN_parallel_residuals_revalidate | comp has it merged | USE_PARALLEL_RESIDUALS=1; our prior implementation regressed | -0.005 train_loss | comp-novel | 0 (env var) | 20260408T0000Z |
 | 2 | FFN_swish_leakyrelu_mix_gate | Plan-A | combine Swish² and LeakyReLU(0.5)² in parallel halves with learned scalar | -0.004 train_loss | comp-novel | 35 | 20260408T0000Z |
 | 3 | FFN_norm_percentile_dropout | Plan-A novel | zero out FFN intermediate features whose row-norm is in the top 1%; targets the rare exploding-activation pathway | -0.006 train_loss | world-novel-candidate | 30 | 20260408T0000Z |
+| 4 | FFN_polyglu_state_conditional_routing | C30#2 — arXiv:2603.13347 PolyGLU (Mar 2026) | replace fixed ReLU² with learned input-conditioned softmax gate over [ReLU², Swish², LeakyReLU(0.5)²]; 3 parallel projections + single gate, no expert weight duplication | -0.007 train_loss | comp-novel | 45 | 20260408T0312Z |
+| 5 | FFN_squared_activation_sparsity_exploit | C30#2 — arXiv:2503.16672 + custom synthesis | exploit intrinsic 2:4 sparsity in ReLU² outputs: zero-mask the 2-of-4 smallest activations per position with STE gradient; 1.3× faster step → more steps in 10 min budget | -0.004 train_loss + 1.3× throughput | **world-novel-candidate** | 65 | 20260408T0312Z |
+| 6 | FFN_per_layer_alpha_learnable_activation | C30#2 — LESSONS §2 + adaptive activation lit | per-layer scalar α∈[0.01,0.5] gates ReLU² intensity: act = α·(ReLU(x))² + (1−α)·x; init α=0.1 shallow / 0.3 deep | -0.005 train_loss | comp-novel | 30 (9 floats + elementwise) | 20260408T0312Z |
 
 ---
 
