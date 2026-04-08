@@ -29,7 +29,7 @@ See `STACK_NOVELTY_PLAN.md` for the full schema spec and the RemoteTrigger paylo
 | L05_ffn | 1 | L05_parallel_residuals | no | n=2 PROMOTION-READY | mean=2.24015 (seed42=2.2387, seed1337=2.2416) |  | G | 20260408T0457Z |
 | L05_ffn | 2 | L05_norm_pct_dropout | **yes (world-novel)** | **n=2 confirmed-win** (S2 cheap-pod) | S2 seed42=1.4140 + seed1337=1.4133, mean=**1.41365** | **1.41365** (cheap F n=2) | F | 20260408T1005Z |
 | L04_attention | 2 | L04_gated_attention | no | **n=2 confirmed-win — BEST overall val_bpb** (S2 cheap-pod) | S2 seed42=1.4098 + seed1337=**1.4090** → mean=**1.4094** ★ | **1.4094** ★ (cheap G n=2) | G | 20260408T1130Z |
-| L06_norm | 3 | L06_asymmetric_skip_init | **yes (world-novel)** | **n=2 confirmed-win — BEST val_bpb of campaign** | S2 seed42=1.4117 + seed1337=**1.4089** ★ → mean=**1.4103** | **1.4103** ★ (cheap E n=2) | E | 20260408T1110Z |
+| L06_norm | 3 | L06_asymmetric_skip_init | **DEMOTED to comp-novel C180 1147Z** (Nick Ryan 2024 prior art) | **n=2 confirmed-win** | S2 seed42=1.4117 + seed1337=1.4089 → mean=**1.4103** | **1.4103** (cheap E n=2) | E | 20260408T1147Z |
 | L07_loss | 4 | L07_asym_label_smoothing | **yes (world-novel)** | **confirmed-win** (S2 cheap-pod) | n=2 mean=2.22885 (S1) → S2 train_loss=2.3068 → val_bpb=1.4138 | **1.4138** (cheap F) | F | 20260408T0905Z |
 | L08_optimizer | 3 | L08_per_proj_lr_split | **yes (world-novel)** | **DEMOTED — FAIL above baseline** | S2 seed42=1.4166 + seed1337=1.4148 → mean=**1.4157** > baseline 1.4137 | +0.002 ABOVE baseline (FAIL) | B | 20260408T1112Z |
 | L08_optimizer | 5 | L08_chebns_NS_3step | no (DEMOTED to comp-port) | **confirmed-win** (S2 cheap-pod) | seed42 train_loss=2.3059 → val_bpb=1.4153 |  | B | 20260408T1145Z |
@@ -400,6 +400,25 @@ demoted_utc: 20260408T0915Z
 demoted_at: C180 audit 0915Z re-check
 reason: Published as CANS (Chebyshev-optimized Newton-Schulz) in arXiv:2506.10935v1 (Jun 2025), explicitly describing 3-step Chebyshev-optimized replacement for Muon's 5-step orthogonalization. THE SAME PAPER I cited as "source/inspiration" — I was wrong to call it world-novel-candidate; I should have flagged it as comp-novel from the start.
 citations: arXiv:2506.10935
+
+### DEMOTION: OPT_RIEMANNIAN_GRAM_QKV → comp-novel
+demoted_utc: 20260408T1147Z
+demoted_at: C180 audit 1147Z re-check (just shipped 1133Z, demoted 14 min later)
+reason: Tilde Research has an open-source "Gram-Space Manifold Muon" reference implementation; arXiv:2603.09697 ("Mousse: Rectifying the Geometry of Muon with Curvature-Aware Preconditioning") describes Finsler-structured manifold optimization on Q/K/V matrices. Active 2025 work by Cesista/Su on per-layer Stiefel Muon variants. The PRE-NS sublayer-selective application MIGHT still be a unique implementation detail, but the underlying technique (Stiefel manifold projection in Muon, applied to attention weights) is clearly converging in the open-source community.
+citations: arXiv:2603.09697 (Mousse), Tilde Research Gram-Space Manifold Muon, Cesista/Su 2025 manifold variants
+new_verdict: comp-novel — still useful as a comp-port if it works empirically, but NOT world-novel
+LESSON: I conflated "novel selective application" with "world-novel" AGAIN. The same mistake as OPT_CHEBYSHEV_NS. Need stricter audit before shipping: if the underlying technique is in any open implementation, the patch is comp-novel even if the slice/composition is unique.
+
+### DEMOTION: L06_ASYMMETRIC_SKIP_INIT → comp-novel
+demoted_utc: 20260408T1147Z
+demoted_at: C180 audit 1147Z re-check (was n=2 confirmed-win at 1.4103)
+reason: Nick Ryan blog "Adaptive skip connections improve training" (May 2024) explicitly tests skip-weight initialization of 1.0 for layer 1, **0.5 for layer 2**, 0.0 for all remaining — the SAME 0.5 half-init mechanism we claimed as world-novel. Two-year prior art. COLING 2020 "Rethinking Skip Connection with Layer Normalization" also covers skip-init schedules.
+citations: https://nickcdryan.com/2024/05/24/adaptive-skip-connections-improve-training/ ; COLING 2020 Skip-Init paper
+new_verdict: comp-novel — still a confirmed empirical win at val_bpb 1.4103 (n=2), useful for the stack, but NOT world-novel.
+
+### FLAG: L11_DYN_LYAPUNOV_CLIP — needs re-audit (PR #1471 SDClip adjacent)
+flag_utc: 20260408T1147Z
+reason: openai/parameter-golf PR #1471 ("[Record] SP8192 + SDClip + 3-Layer Depth Recurrence + EMA 0.9965 — val_bpb 1.0866") introduces "SDClip" — Standard Deviation Clipping — which is in the same conceptual neighborhood as our DYN_LYAPUNOV_CLIP (Lyapunov-driven adaptive grad clip). Need to read PR #1471 description to determine if mechanism overlaps. Different math (SD vs Lyapunov spectrum) but same empirical category. **TODO: full audit at next C180 fire.**
 new_verdict: comp-port (the source paper IS the technique)
 
 ### NRM_adaptive_resid_gating

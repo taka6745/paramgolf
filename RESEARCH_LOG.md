@@ -2346,3 +2346,72 @@ The demotions don't change the BPB calculus — the patches still work. But our 
 
 ### Win likelihood updated: 30% (down from 35%)
 The 60% stacking discount is sobering. To reach 1.07 cheap-pod equivalent, we'd need ~0.35 BPB gain — impossibly large with current per-marker gains. Best-case path: LEGAL_TTT delivers -0.02, BPE-8192 delivers -0.05 indirect, optimal H100 transfer ratio holds. Realistic projected H100 val_bpb after all wins: 1.05-1.10 (could match or barely beat current SOTA 1.07-1.08).
+
+---
+
+## AUDIT_20260408T1147Z — C180 audit fire
+
+**Cron**: C180 (3-hour deep audit), fired at 1147Z UTC.
+
+### Re-audit results (3 high-stakes world-novel claims)
+
+| claim | prior status | audit verdict | reason |
+|---|---|---|---|
+| **OPT_RIEMANNIAN_GRAM_QKV** | shipped 1133Z, world-novel | **DEMOTED → comp-novel** | Tilde Research has open Gram-Space Manifold Muon impl; arXiv:2603.09697 Mousse covers Finsler manifold optimization; Cesista/Su 2025 work converging on similar variants |
+| **L05_NORM_PCT_DROPOUT** | n=2 confirmed-win 1.41365, world-novel | **STILL world-novel ✓** | 0 hits on norm-percentile feature dropout; only general dropout lit (LayerDrop, Dynamic Dropout) |
+| **L06_ASYMMETRIC_SKIP_INIT** | n=2 confirmed-win 1.4103, world-novel | **DEMOTED → comp-novel** | Nick Ryan May 2024 blog explicitly tests 0.5 half-init skip-weight schedule; 2-year prior art |
+
+### Comp PR audit (last 3h: PRs #1467-#1473)
+
+| PR# | title | author | val_bpb | collisions with our work |
+|---|---|---|---|---|
+| #1473 | Non-record: 11L FullGPTQ + XSA-all + BigramHash 3072×112 | AVINASH0052 | 1.11564 | XSA + BigramHash both already in our toolkit (TABULATION_HASH); no new collision |
+| #1472 | Add 1.2066 record: 8L Depth Recurrence | trhgbao | 1.2066 | Depth recurrence — comp-port territory, not world-novel |
+| **#1471** | **[Record] SP8192 + SDClip + 3-Layer Depth Recurrence + EMA 0.9965** | X-Abhishek-X | **1.0866** | **⚠ FLAG: SDClip may collide with our L11 DYN_LYAPUNOV_CLIP world-novel claim. Different math (SD vs Lyapunov spectrum) but same empirical neighborhood. Needs deeper read.** |
+| #1470 | Feat/11l fullgptq xsa bigramhash | AVINASH0052 | (record dup of #1473) | none new |
+| #1469 | Compare changes | testerbek | trivial | none |
+| #1468 | 10L + LeakyReLU² + EMA + LZMA-Ext compression | testerbek | (no score) | LZMA-Ext we don't have; LeakyReLU² + EMA we already use |
+| #1467 | Non-record: XSA-11 + Parallel Residual (L7+) + Depth Recurrence | PhamPhuHoa-23 | 1.1056 | Parallel residuals (we tried, demoted); depth recurrence (comp-port) |
+
+### Verified world-novel count after this audit
+
+**4 verified world-novels** (down from claimed 8 before audit):
+1. **L05 NORM_PCT_DROPOUT** ✓ (n=2 confirmed cheap-pod 1.41365)
+2. **L09 NGR_LOG_FREQ_INV** (shipped, not yet validated, claim still holds)
+3. **L09 CTX_PARTITIONED_TAB** (shipped, world-novel — extension of our published mini-paper)
+4. **L10 CMP_QUANT_VALUE_DEDUP** (shipped, world-novel — int8 alphabet snap for zlib LZ77 runs)
+
+**Still UNDER AUDIT** (need re-check next C180):
+- L11 DYN_LYAPUNOV_CLIP (flagged due to PR #1471 SDClip adjacency)
+- L04 coprime_per_head_rope (n=1 confirmed-win 1.4109, not yet re-audited this cycle)
+
+**DEMOTED this cycle (from world-novel → comp-novel)**:
+- OPT_RIEMANNIAN_GRAM_QKV (just shipped 14 min before demotion)
+- L06 ASYMMETRIC_SKIP_INIT (was the 2nd-best n=2 confirmed result)
+
+### Spend recompute
+
+| pod | hw | rate | hours | subtotal |
+|---|---|---|---|---|
+| B/C/E/F/G | RTX 3090/3080Ti/4070Ti | ~$0.27/h avg × 5 | 4 (this session) | $5.40 |
+| (D outage, A removed) | — | — | 0 | 0 |
+| **prior session** | — | — | — | $6.70 |
+| **session bring-up overhead** | — | — | — | $1.50 |
+
+**Grand total estimate: ~$13.60 / $25 soft cap = NORMAL spend mode.** Headroom: $11.40 to soft cap, $22.40 to hard cap.
+
+### Win likelihood updated: 25% (down from 30%)
+
+The 2 demotions hurt our world-novel count. We're now at 4 verified world-novels, half of which haven't been validated yet. Best-case path to a competitive submission still requires LEGAL_TTT to land + NGRAM_BACKOFF to validate + a major architectural shift (BPE-8192, 11L). Without those, we're at ~1.41 cheap-pod val_bpb best, projected ~1.10 H100 — competitive with merged SOTA 1.1147 but well below legal-open frontier 0.81.
+
+### Lesson learned (recurring)
+
+For the THIRD time this session, I conflated "novel sublayer-selective application of a known technique" with "world-novel". OPT_CHEBYSHEV_NS, then CMP_HESSIAN_BIT_BUDGET + TOK_INPUT_SMOOTH, now OPT_RIEMANNIAN_GRAM_QKV + L06_ASYMMETRIC_SKIP_INIT. The pattern: the underlying technique is in literature, our "novel slice" is just implementation. **New rule for C90 build fires: before shipping a world-novel claim, do a 5-WebSearch + 1-GitHub-search audit and demand 0 hits on the underlying technique, not just the specific slice.**
+
+### Cron health
+
+5/7 pods alive (B/C/E/F/G) on commit 9744b65 (latest with C30 1141Z research). Pod D in network outage. Pod A removed.
+
+Queue: 161 entries, front of queue is the high-EV S2 confirms (TRUE_WINNERS_3WAY, normuon n=2, coprime_rope n=2, byte_weight n=2, NGRAM_BACKOFF, RIEMANNIAN_QKV, LEGAL_TTT) — all in flight or queued.
+
+C90 fired at 1133Z (RIEMANNIAN ship → just demoted). C30 fired at 1127Z (L03+L10 candidates) and 1141Z (L07+L09 candidates). Next C90 should pick a candidate from the new C30 backlog — probably **NGR_modified_kneser_ney_discount** (35 LOC, comp-novel + PhD-defensible, never tested in comp).
