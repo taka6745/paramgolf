@@ -726,14 +726,14 @@ A layer is LOCKable iff:
 |---|---|---|---|---|---|---|
 
 ```
-total_session_usd: 12.62
+total_session_usd: 14.78
 prior_sessions_spent: 6.70
-grand_total_usd: 19.32
+grand_total_usd: 21.48
 soft_cap_usd: 25.00
 hard_cap_usd: 50.00 (NIGHT_MODE user-lifted ceiling)
-remaining_to_soft_cap: 5.68
-remaining_to_hard_cap: 30.68
-last_updated_utc: 20260408T1503Z
+remaining_to_soft_cap: 3.52
+remaining_to_hard_cap: 28.52
+last_updated_utc: 20260408T1607Z
 8_pods_burn_rate_per_h: 2.16
 
 ceiling_actions:
