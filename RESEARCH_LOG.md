@@ -2447,3 +2447,44 @@ C90 fired at 1133Z (RIEMANNIAN ship → just demoted). C30 fired at 1127Z (L03+L
 - Deploy SP8192 to a pod (test it ASAP)
 - Consider Score-First TTT as comp-novel candidate
 - Continue waiting for J's STACK_LEGAL_TTT_NGRAM_BACKOFF (n-gram path may bypass LEGAL_TTT brittleness)
+
+---
+
+## AUDIT_20260408T2055Z (C180 fire, night-mode)
+
+**Pods alive**: 8/8 (B/C/E/F/G/H/I/J all 95-100% GPU, H briefly at 83%)
+**In-flight**: 8 experiments running, LEGAL_TTT seed1337 confirms on B/H/J still completing
+**Spend**: ~$22 (warn tier)
+**Champion**: STACK_GATED_LEGAL_TTT_seed42 = 1.3711 (unchanged since 12:55Z)
+**Layers locked**: 0 (none reach 3 confirmed-wins)
+
+**World-novel status review** (PD3 PhD-defensibility):
+- **L05 NORM_PCT_DROPOUT** — still world-novel, confirmed-win n=2 @ 1.41365
+- **L09 NGR_LOG_FREQ_INV** — claim pending (no fresh comp PRs on log-frequency-inverted n-gram weights)
+- **L09 CTX_PARTITIONED_TAB** — claim pending (partitioned tabulation hash for n-gram, no comp hits)
+- **L10 CMP_QUANT_VALUE_DEDUP** — claim pending
+- **L11 DYN_LYAPUNOV_CLIP** — PR #1471 uses SDClip — this may collide with our DYN_LYAPUNOV_CLIP. Needs re-audit. **FLAG: potential demotion**.
+
+**New comp PRs since last C180 (0945Z)**:
+- PR #1480 (19:33Z) JEPA Baseline — 1.2699 (non-record)
+- PR #1479 (18:29Z) GDN Hybrid E2E TTT — 1.14502 (non-record)
+- PR #1478 (17:14Z) Shallow Blue BOS-Reset Exact Memory Probe
+- PR #1477 (17:11Z) **NEW RECORD** SP8192 + Parallel Residuals + Score-First TTT — 1.0822 (3-seed mean)
+- PR #1476 (15:50Z) **RECORD** SP8192 + QK5 + Legal TTT — 1.0842
+- PR #1471 (10:20Z) **RECORD** SP8192 + SDClip + 3-Layer Depth Recurrence + EMA — 1.0866
+
+**Findings**:
+1. **LN_SCALE + LEGAL_TTT n=2 CONFIRMED FAIL**: both seeds = 1.4618 (+0.0902 vs champion). Consistent result proves LEGAL_TTT is incompatible with LN_SCALE's asymmetric residual scaling. Both were promoted individually earlier but STACK breaks.
+2. **LEGAL_TTT hyperparameter razor's edge confirmed** n=1: LR2X_s42=1.5097 (CATASTROPHIC DIVERGE +0.139), LR_HALF_s42=1.416 (+0.045), 5STEPS_s1337=1.4142 (+0.043). Champion 1.3711 is a UNIQUE operating point.
+3. **STACK_INTERACTION_5way_S2** (gated+norm_pct+asym_skip+asym_label+per_proj_lr) seed42=1.4124 — worse than any 2-way. Confirms stacking hurts at our scale.
+4. **SOTA gap**: Comp SOTA 1.0822, our champion 1.3711. Gap = 0.29 BPB. Closing requires SP8192 deployment (we have the tokenizer built on Mac).
+
+**Demotions this cycle**: 0 (DYN_LYAPUNOV_CLIP flagged but not yet verified collision with SDClip)
+
+**Stop deadline**: 22:30Z (~1h35min away)
+
+**Next priorities until deadline**:
+- Wait for LEGAL_TTT seed1337 confirms on B/H/J
+- Consider SP8192 deployment if pod cycles
+- No new world-novel build fires (backlog saturated 176+ candidates, bottleneck is testing)
+
