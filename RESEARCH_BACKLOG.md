@@ -28,6 +28,21 @@ Schema for every row:
 | 7 | DYN_lyapunov_exponent_gradient_clip | C30#9 — nonlinear dynamics (Oseledec stability theory) | estimate dominant Lyapunov exponent λ₁ from rolling 20-step grad_norm covariance; auto-clip when λ₁ exceeds threshold → prevents bifurcation into oscillatory instability; cleaner gradient signal | -0.008 to -0.015 BPB (stability preserves step effectiveness) | **world-novel-candidate** | 150 | 20260408T0800Z |
 | 8 | DYN_phase_portrait_attractor_checkpoint | C30#9 — dynamical systems (basin of attraction + phase recovery) | monitor 3D phase portrait (loss, grad_norm, entropy(logits)); detect drift > 2σ from training attractor; soft-checkpoint restore within 1 step → recovers from transient divergence without hard reset | -0.010 to -0.020 BPB (fewer divergence episodes) | **world-novel-candidate** | 200 | 20260408T0800Z |
 | 9 | DYN_bifurcation_mixed_precision_schedule | C30#9 — control theory (bifurcation detection + Lyapunov-margin parameter switching) | detect phase transitions (warmup→main, main→cooldown) via control-Lyapunov stability margin; switch precision at bifurcation points (fp32→fp16 at main, fp16→int8 at cooldown) → cheaper matmuls when stable | -0.008 to -0.015 BPB (precision elasticity + step reallocation) | **world-novel-candidate** | 180 | 20260408T0800Z |
+| 10 | KER_tma_megakernel_mlp_port | C30#10 audit — SOTA `record/tma-megakernel-triple-loop` (b27fe93) by Andrew Baggio | port the Triton TMA async descriptor + persistent kernel that fuses fc→leaky_relu→square in MLP path; +10.5% throughput → +127 steps in 10 min budget | -0.02 to -0.03 BPB (validated by SOTA val_bpb 1.08480) | **comp-port** (high-impact) | 350 | 20260408T0810Z |
+
+---
+
+## L12 — Comp-port baseline gaps (from 1.07/1.08 SOTA stack audit)
+
+These are NOT world-novel but ARE necessary baseline pieces. The SOTA val_bpb 1.08480 (`record/tma-megakernel-triple-loop`, b27fe93) uses ALL of these. Without them as a base, our world-novels can only reach the trigram floor 1.10. With them as a base + our world-novels stacked on top = potential winning combination.
+
+| priority | name | source | hypothesis | expected_delta | novelty_estimate | code_skeleton_loc | added_utc |
+|---|---|---|---|---|---|---|---|
+| 1 | SP8192_VOCAB | C30#10 audit — SOTA stack uses 8192 vocab | expand vocabulary 1024→8192; rebuild bigram/trigram/4-gram tables for dense coverage; unlocks BigramHash 3072×112 cascade | -0.08 to -0.12 BPB | **comp-port** (highest impact missing piece) | 200 (chore script + tokenizer swap + table rebuild) | 20260408T0810Z |
+| 2 | WEIGHT_EMA_SWA_COMBO | C30#10 audit — PR #1019 abaybektursun | EMA 0.997 + SWA every 50 steps; final model is weighted blend; orthogonal to params | -0.006 to -0.010 BPB | **comp-port** (cheapest, ship FIRST) | 60 | 20260408T0810Z |
+| 3 | GPTQ_FULL_HESSIAN_AR | C30#10 audit — PR #1019 abaybektursun | full Hessian GPTQ + autoregressive self-gen calibration (64×2048 tokens, temp=0.8); legality-safe (no train/val data access during quant) | -0.008 to -0.015 BPB | **comp-port** | 180 | 20260408T0810Z |
+| 4 | BIGRAMHASH_EXPAND_3072 | C30#10 audit — PR #1019 abaybektursun | scale BigramHash from 1536×64 → 3072×112; stays under 16 MB | -0.004 to -0.008 BPB | **comp-port** | 40 | 20260408T0810Z |
+| 5 | DEPTH_RECUR_NUM_LOOPS_3 | C30#10 audit — SOTA b27fe93 | DEPTH_RECUR with NUM_LOOPS=3 (vs our 1) — deeper recurrence over the same params | -0.005 to -0.010 BPB | **comp-port** | 20 (env var change + validation) | 20260408T0810Z |
 
 ---
 
@@ -63,6 +78,9 @@ Schema for every row:
 | 4 | DAT_loss_stratified_minibatching | C30#5 — arXiv:2405.07490 + custom probe | compute per-sample loss on tiny 2-layer probe; stratify into difficulty quartiles; minibatches with fixed difficulty ratios (hard:medium:easy = 1:1:1) | -0.012 to -0.025 train_loss | world-novel-candidate | 110 | 20260408T0451Z |
 | 5 | DAT_adaptive_sampling_temperature_schedule | C30#5 — curriculum + importance sampling | running per-sample CE histogram; sampling weight w(t)=exp(β(t)·rank); β starts 0.1 ramps to 2.0 → hard samples 8× more often as training progresses | -0.008 to -0.018 train_loss | world-novel-candidate | 95 | 20260408T0451Z |
 | 6 | DAT_cross_shard_rle_biased_interleaving | C30#5 — RLE-aware shuffle | detect high-RLE sequences (zstd > 0.4); coprime interleave biased toward structure-dense early; preserve linguistic patterns | -0.006 to -0.015 train_loss | world-novel-candidate | 85 | 20260408T0451Z |
+| 7 | DAT_heterogeneity_loss_weight | C30#10 — FineWeb-Edu byte-class analysis (~10% code, ~17% URLs, ~42% wiki, ~30% prose) | per-sample loss reweighting schedule β(t): 0.1→2.0 over 600s; hard samples (code, URLs detected via byte signatures) weighted 8× more by step 600 | -0.010 to -0.020 BPB (10-15% effective step gain on hard content) | **world-novel-candidate** | 120 | 20260408T0810Z |
+| 8 | DAT_byte_entropy_stratified_minibatch | C30#10 — FineWeb heterogeneity stratification | compute zstd-ratio per 2048-token sequence; stratify into 4 buckets (easy→hard); minibatch construction: 25% hard + 50% medium + 25% easy (inverse of curriculum) | -0.005 to -0.012 train_loss | comp-novel | 85 | 20260408T0810Z |
+| 9 | DAT_domain_gated_smoothing | C30#10 — FineWeb domain-aware label smoothing | online 2-layer 512→256 byte-histogram domain classifier predicts {code, URL, wiki, prose}; per-domain ε ∈ {0.02, 0.005, 0.01, 0.008}; inverts standard label smoothing (harder on rare, softer on easy) | -0.006 to -0.012 BPB | **world-novel-candidate** | 95 | 20260408T0810Z |
 
 ---
 

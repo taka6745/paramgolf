@@ -209,6 +209,24 @@ verdict_reason: paper arXiv:2503.16672 demonstrates 2:4 sparsity for inference; 
 phd_defensible: yes — clear theory (intrinsic ReLU² sparsity matches 2:4 hardware pattern), clear ablation (mask on/off vs throughput), workshop paper on "exploiting activation function statistics for hardware-aware training"
 owner: F
 
+### DAT_heterogeneity_loss_weight
+added_utc: 20260408T0810Z
+source: C30#10 audit — FineWeb-Edu byte-class analysis (~10% code, ~17% URLs, ~42% wiki, ~30% prose)
+verdict: world-novel
+verdict_reason: Dynamic loss reweighting on byte-LM domain classes (not just sample difficulty) is unpublished. arXiv:2502.06733 does sample-level reweighting but not domain-class-based. 0 hits for "FineWeb domain-aware loss reweighting byte language model".
+phd_defensible: yes — clean hypothesis (heterogeneous corpus needs domain-aware schedule), falsifiable, workshop paper feasible
+win_mechanism: 10-15% effective step gain on hard content (code/prose) → -0.010 to -0.020 BPB
+owner: D (when D recovers) or G
+
+### DAT_domain_gated_smoothing
+added_utc: 20260408T0810Z
+source: C30#10 audit — FineWeb domain-aware label smoothing (inverts standard recipe)
+verdict: world-novel
+verdict_reason: Per-domain adaptive label smoothing ε ∈ {0.02, 0.005, 0.01, 0.008} based on online byte-histogram classifier has 0 literature hits + 0 comp PRs. Standard label smoothing applies a single ε across all classes.
+phd_defensible: yes — connects to Szegedy 2016 + LiteToken-style domain gating
+win_mechanism: -0.006 to -0.012 BPB via inverted smoothing (sharp on easy, soft on hard)
+owner: D/F
+
 ### DYN_lyapunov_exponent_gradient_clip
 added_utc: 20260408T0800Z
 source: C30#9 — nonlinear dynamics control theory (Oseledec stability)
