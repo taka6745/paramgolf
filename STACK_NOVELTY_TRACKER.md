@@ -12,8 +12,8 @@ See `STACK_NOVELTY_PLAN.md` for the full schema spec and the RemoteTrigger paylo
 |---|---|---|---|---|---|---|---|---|
 | L02_data | 1 | L02_coprime_stride | no | screened-pass | -0.16 (2.6818 @ step 500; mid-run reading at C5#6) |  | D | 20260408T0257Z |
 | L04_attention | 1 | L04_gated_attention | no | **screened-pass HUGE** | **-0.61** (2.2295 @ step 1400; new session best, beats SP6_seed1337=2.4499 by -0.22) |  | G | 20260408T0257Z |
-| L07_loss | 1 | L07_byte_weight | no | screened-pass | -0.34 (vs CHAMP_L5_seed13=2.84 baseline; 2.50 result) |  | F | 20260408T0251Z |
-| L08_optimizer | 1 | L08_normuon | no | screened-pass | -0.32 (vs CHAMP_L5_seed13=2.84; 2.5208 result) |  | B | 20260408T0251Z |
+| L07_loss | 1 | L07_byte_weight | no | **n=2 PROMOTION-READY** | -0.48 mean (seed42=2.50, seed1337=2.229, mean=2.3645) |  | F | 20260408T0309Z |
+| L08_optimizer | 1 | L08_normuon | no | **n=2 PROMOTION-READY** | -0.47 mean (seed42=2.5208, seed1337=2.2285, mean=2.3747) |  | B | 20260408T0309Z |
 | L09_ngram | 1 | L09_entropy_adaptive | no | screened-pass | -0.32 (2.5201 @ step 1300) |  | C | 20260408T0257Z |
 | L06_norm | 1 | L06_ln_scale | no | screened-pass | -0.38 (2.4622 @ step 1100) |  | E | 20260408T0303Z |
 
