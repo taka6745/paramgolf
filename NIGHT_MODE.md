@@ -2,6 +2,31 @@
 
 **Active flag**: `MODE=NIGHT_HIGH_RISK_ONLY`
 
+## ⚠️ POST-COMPACTION RE-ORIENT INSTRUCTIONS
+
+**If you are reading this after a context compaction, do this FIRST:**
+
+1. **Read these files in order** (5-page max compaction policy means context lost):
+   - `NIGHT_MODE.md` (this file) — campaign state + assignments
+   - `STACK_NOVELTY_TRACKER.md` Section A — all results, champion, demotions
+   - `RESEARCH_BACKLOG.md` — candidate pool, marked SHIPPED status
+   - `PODS_SSH.md` — 8 pod connection info (B/C/E/F/G/H/I/J alive, A+D tombstoned)
+   - `RESEARCH_LOG.md` — append-only narrative log
+   - `CLAUDE.md` — project instructions
+2. **Run `git log --oneline -50`** to see all commits in the night campaign
+3. **Run `git log --grep="NIGHT_MODE" --oneline`** to see night-mode-tagged commits
+4. **Sweep all 8 pods** to confirm liveness and current in-flight runs
+5. **Check spend**: estimate from session start time × 8 pods × $0.22-0.27/h
+6. **Stop deadline**: 21:00 UTC (= 7 AEST) — there's a CronCreate one-shot at 6:55 AEST tomorrow to terminate all pods. **DO NOT skip this stop.**
+7. **Bear-fruit threshold**: val_bpb ≤ 1.3666 (Δ ≥ -0.005 vs current best 1.3716)
+8. **NO H100 EVER** — user explicit rule
+9. **Each pod runs a UNIQUE test** — no overlap between pods (per the assignment table below)
+10. **C90 cron prompt** has been updated to read NIGHT_MODE.md on every fire — it knows the rules
+
+**Plans persist in physical files. Don't trust the in-context summary alone.**
+
+
+
 **Purpose**: stop incremental knob-twisting. Ship 8+ high-risk world-novel attempts per night. Strict pre-ship audit (5-search rule). Pause incremental marker shipping. Commit everything to physical repo files.
 
 ---
