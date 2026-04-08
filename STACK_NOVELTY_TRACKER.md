@@ -28,7 +28,7 @@ See `STACK_NOVELTY_PLAN.md` for the full schema spec and the RemoteTrigger paylo
 | L06_norm | 1 | L06_ln_scale | no | **n=3 PROMOTION-READY** | -0.54 mean (seeds 42/1337/999 = 2.4622/2.2217/2.2204, mean=2.30143) |  | E | 20260408T0345Z |
 | L05_ffn | 1 | L05_parallel_residuals | no | n=2 PROMOTION-READY | mean=2.24015 (seed42=2.2387, seed1337=2.2416) |  | G | 20260408T0457Z |
 | L05_ffn | 2 | L05_norm_pct_dropout | **yes (world-novel)** | **n=2 confirmed-win** (S2 cheap-pod) | S2 seed42=1.4140 + seed1337=1.4133, mean=**1.41365** | **1.41365** (cheap F n=2) | F | 20260408T1005Z |
-| L04_attention | 2 | L04_gated_attention | no | **confirmed-win — BEST val_bpb** (S2 cheap-pod) | n=5 best=2.2148, S2 train_loss=2.3154 → val_bpb=1.4098 | **1.4098** ★ (cheap G) | G | 20260408T0905Z |
+| L04_attention | 2 | L04_gated_attention | no | **n=2 confirmed-win — BEST overall val_bpb** (S2 cheap-pod) | S2 seed42=1.4098 + seed1337=**1.4090** → mean=**1.4094** ★ | **1.4094** ★ (cheap G n=2) | G | 20260408T1130Z |
 | L06_norm | 3 | L06_asymmetric_skip_init | **yes (world-novel)** | **n=2 confirmed-win — BEST val_bpb of campaign** | S2 seed42=1.4117 + seed1337=**1.4089** ★ → mean=**1.4103** | **1.4103** ★ (cheap E n=2) | E | 20260408T1110Z |
 | L07_loss | 4 | L07_asym_label_smoothing | **yes (world-novel)** | **confirmed-win** (S2 cheap-pod) | n=2 mean=2.22885 (S1) → S2 train_loss=2.3068 → val_bpb=1.4138 | **1.4138** (cheap F) | F | 20260408T0905Z |
 | L08_optimizer | 3 | L08_per_proj_lr_split | **yes (world-novel)** | **confirmed-win** (S2 cheap-pod) | n=2 (S1) → S2 train_loss=2.3088 → val_bpb=1.4166 | **1.4166** (cheap B) | B | 20260408T0905Z |
