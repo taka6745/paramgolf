@@ -85,6 +85,11 @@ def maybe_load_docs_sidecar_meta(docs_jsonl: Path) -> dict[str, Any] | None:
 
 
 def copy_from_hf_cache(*, repo_id: str, remote_root: str, filename: str, destination: Path) -> bool:
+    # Phase 1 H100 fix: when MATCHED_FINEWEB_SKIP_HF_COPY=1, skip the re-copy if the
+    # destination already exists. Lets us reuse the JSONL we already extracted (or a
+    # symlink to it on a larger volume) instead of redownloading 45 GB on every run.
+    if os.environ.get("MATCHED_FINEWEB_SKIP_HF_COPY") and (destination.exists() or destination.is_symlink()):
+        return True
     remote_path = Path(remote_root) / filename if remote_root else Path(filename)
     try:
         cached_path = Path(
