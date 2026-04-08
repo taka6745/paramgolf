@@ -33,6 +33,7 @@ from pathlib import Path
 # This list is the source of truth for Gate G4. The 08_patch script appends a
 # python integrity check that uses this same list (kept in sync by hand).
 EXPECTED_MARKERS = [
+    "ASYMMETRIC_SKIP_INIT_MARKER",
     "BYTE_WEIGHT_MARKER",
     "COPRIME_STRIDE_MARKER",
     "DEPTH_RECUR_MARKER",
@@ -46,6 +47,7 @@ EXPECTED_MARKERS = [
     "MUONEQ_R_MARKER",
     "NGRAM_BIAS_MARKER",
     "NGRAM_GATE_MARKER",
+    "NORM_PCT_DROPOUT_MARKER",
     "NORMUON_MARKER",
     "NS_STEPS_MARKER",
     "PARALLEL_RESIDUALS_MARKER",

@@ -72,7 +72,7 @@ Schema for every row:
 |---|---|---|---|---|---|---|---|
 | 1 | FFN_parallel_residuals_revalidate | comp has it merged | USE_PARALLEL_RESIDUALS=1; our prior implementation regressed | -0.005 train_loss | comp-novel | 0 (env var) | 20260408T0000Z |
 | 2 | FFN_swish_leakyrelu_mix_gate | Plan-A | combine Swish² and LeakyReLU(0.5)² in parallel halves with learned scalar | -0.004 train_loss | comp-novel | 35 | 20260408T0000Z |
-| 3 | FFN_norm_percentile_dropout | Plan-A novel | zero out FFN intermediate features whose row-norm is in the top 1%; targets the rare exploding-activation pathway | -0.006 train_loss | world-novel-candidate | 30 | 20260408T0000Z |
+| 3 | FFN_norm_percentile_dropout | Plan-A novel | zero out FFN intermediate features whose row-norm is in the top 1%; targets the rare exploding-activation pathway | -0.006 train_loss | world-novel-candidate **SHIPPED 0419Z** as NORM_PCT_DROPOUT_MARKER | 30 | 20260408T0000Z |
 | 4 | FFN_polyglu_state_conditional_routing | C30#2 — arXiv:2603.13347 PolyGLU (Mar 2026) | replace fixed ReLU² with learned input-conditioned softmax gate over [ReLU², Swish², LeakyReLU(0.5)²]; 3 parallel projections + single gate, no expert weight duplication | -0.007 train_loss | comp-novel | 45 | 20260408T0312Z |
 | 5 | FFN_squared_activation_sparsity_exploit | C30#2 — arXiv:2503.16672 + custom synthesis | exploit intrinsic 2:4 sparsity in ReLU² outputs: zero-mask the 2-of-4 smallest activations per position with STE gradient; 1.3× faster step → more steps in 10 min budget | -0.004 train_loss + 1.3× throughput | **world-novel-candidate** | 65 | 20260408T0312Z |
 | 6 | FFN_per_layer_alpha_learnable_activation | C30#2 — LESSONS §2 + adaptive activation lit | per-layer scalar α∈[0.01,0.5] gates ReLU² intensity: act = α·(ReLU(x))² + (1−α)·x; init α=0.1 shallow / 0.3 deep | -0.005 train_loss | comp-novel | 30 (9 floats + elementwise) | 20260408T0312Z |
@@ -85,7 +85,7 @@ Schema for every row:
 |---|---|---|---|---|---|---|---|
 | 1 | NRM_ln_scale_validate | Patch (in 1.1147 stack) | USE_LN_SCALE=1 — RMSNorm output × 1/√(layer+1) | -0.003 train_loss | comp-novel | 0 (env var) | 20260408T0000Z |
 | 2 | NRM_per_layer_residual_scalar | ReZero variant | per-layer learned residual scalar (init 1.0, ≤9 floats) | -0.004 train_loss | comp-novel | 20 | 20260408T0000Z |
-| 3 | NRM_asymmetric_skip_init_half | Plan-A novel | self.skip_weights at line 673 defaults to ones; init at 0.5 instead → explicit info bottleneck | -0.006 train_loss | world-novel-candidate | 5 (init constant) | 20260408T0000Z |
+| 3 | NRM_asymmetric_skip_init_half | Plan-A novel | self.skip_weights at line 673 defaults to ones; init at 0.5 instead → explicit info bottleneck | -0.006 train_loss | world-novel-candidate **SHIPPED 0419Z** as ASYMMETRIC_SKIP_INIT_MARKER | 5 | 20260408T0000Z |
 
 ---
 

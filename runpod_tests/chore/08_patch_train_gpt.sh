@@ -1383,6 +1383,67 @@ else:
     else:
         print("  ✗ MOUSSE anchor not found — skipping (Mousse will be no-op)")
 
+# Patch 26 (C90 build #1, world-novel L06 #3): USE_ASYMMETRIC_SKIP_INIT=1 → init U-net
+# skip_weights at 0.5 instead of 1.0. init=1.0 preserves signal (standard); init=0 is
+# ReZero; init=0.5 is an explicit information-bottleneck claim that doesn't appear in
+# any paper or PR. Source: STACK_NOVELTY_PLAN.md L06 #3. Expected delta: -0.006 train_loss.
+# Falsification: step-500 train_loss worse than init=1.0 by ≥0.005.
+# Idempotent via ASYMMETRIC_SKIP_INIT_MARKER.
+if "ASYMMETRIC_SKIP_INIT_MARKER" in content:
+    print("  ✓ asymmetric skip init already applied")
+else:
+    old_skip_init = """        self.skip_weights = nn.Parameter(torch.ones(self.num_skip_weights, model_dim, dtype=torch.float32))"""
+    new_skip_init = """        # ASYMMETRIC_SKIP_INIT_MARKER: optional 0.5-init for U-net skip weights (world-novel L06 #3)
+        _skip_init_val = 0.5 if int(os.environ.get("USE_ASYMMETRIC_SKIP_INIT", "0")) else 1.0
+        self.skip_weights = nn.Parameter(torch.full((self.num_skip_weights, model_dim), _skip_init_val, dtype=torch.float32))"""
+    if old_skip_init in content:
+        content = content.replace(old_skip_init, new_skip_init)
+        print("  ✓ added ASYMMETRIC_SKIP_INIT 0.5-init option")
+    else:
+        print("  ✗ ASYMMETRIC_SKIP_INIT anchor not found — skipping")
+
+# Patch 27 (C90 build #2, world-novel L05 #3): USE_NORM_PCT_DROPOUT=1 → zero out FFN
+# intermediate rows whose per-token L2 norm is in the top 1% (99th percentile). Standard
+# dropout = random elements; structured dropout = random rows; norm-percentile dropout
+# = rows with highest norm. Targets the rare exploding-activation pathway.
+# Source: STACK_NOVELTY_PLAN.md L05 #3. Expected delta: -0.006 train_loss.
+# Falsification: step-500 train_loss unchanged or worse.
+# Anchor: the LEAKY_RELU-modified MLP.forward (Patch 9 runs before this in the heredoc).
+# Idempotent via NORM_PCT_DROPOUT_MARKER.
+if "NORM_PCT_DROPOUT_MARKER" in content:
+    print("  ✓ norm-percentile dropout already applied")
+else:
+    old_mlp_body = """    def forward(self, x: Tensor) -> Tensor:
+        # LEAKY_RELU_MARKER: optional leaky_relu(0.5)^2 activation (Mac -0.014 BPB)
+        if int(os.environ.get("USE_LEAKY_RELU", "0")):
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+        else:
+            x = torch.relu(self.fc(x))
+        return self.proj(x.square())"""
+    new_mlp_body = """    def forward(self, x: Tensor) -> Tensor:
+        # LEAKY_RELU_MARKER: optional leaky_relu(0.5)^2 activation (Mac -0.014 BPB)
+        if int(os.environ.get("USE_LEAKY_RELU", "0")):
+            x = F.leaky_relu(self.fc(x), negative_slope=0.5)
+        else:
+            x = torch.relu(self.fc(x))
+        x = x.square()
+        # NORM_PCT_DROPOUT_MARKER: zero top-1% per-token L2-norm rows (world-novel L05 #3)
+        if self.training and int(os.environ.get("USE_NORM_PCT_DROPOUT", "0")):
+            _npd_thresh = float(os.environ.get("NORM_PCT_THRESH", "0.99"))
+            _orig_shape = x.shape
+            _x2 = x.reshape(-1, _orig_shape[-1])
+            _row_norms = _x2.float().norm(dim=-1)
+            _kth = torch.quantile(_row_norms, _npd_thresh)
+            _keep = (_row_norms < _kth).to(dtype=x.dtype).unsqueeze(-1)
+            _x2 = _x2 * _keep
+            x = _x2.reshape(_orig_shape)
+        return self.proj(x)"""
+    if old_mlp_body in content:
+        content = content.replace(old_mlp_body, new_mlp_body)
+        print("  ✓ added NORM_PCT_DROPOUT top-1% row kill")
+    else:
+        print("  ✗ NORM_PCT_DROPOUT anchor not found — skipping")
+
 with open("train_gpt.py", "w") as f:
     f.write(content)
 PYEOF
@@ -1400,6 +1461,7 @@ python3 - <<'PYEOF_INTEGRITY'
 import sys, pathlib
 src = pathlib.Path("train_gpt.py").read_text()
 expected = [
+    "ASYMMETRIC_SKIP_INIT_MARKER",
     "BYTE_WEIGHT_MARKER",
     "COPRIME_STRIDE_MARKER",
     "DEPTH_RECUR_MARKER",
@@ -1413,6 +1475,7 @@ expected = [
     "MUONEQ_R_MARKER",
     "NGRAM_BIAS_MARKER",
     "NGRAM_GATE_MARKER",
+    "NORM_PCT_DROPOUT_MARKER",
     "NORMUON_MARKER",
     "NS_STEPS_MARKER",
     "PARALLEL_RESIDUALS_MARKER",
