@@ -209,6 +209,46 @@ verdict_reason: paper arXiv:2503.16672 demonstrates 2:4 sparsity for inference; 
 phd_defensible: yes — clear theory (intrinsic ReLU² sparsity matches 2:4 hardware pattern), clear ablation (mask on/off vs throughput), workshop paper on "exploiting activation function statistics for hardware-aware training"
 owner: F
 
+### TOK_cross_boundary_supermerge_byte
+added_utc: 20260408T0635Z
+source: C30#6 — BoundlessBPE COLM 2025 (arXiv:2504.00178) + byte-level adaptation
+verdict: world-novel
+verdict_reason: BoundlessBPE removes pre-tokenization boundaries in word-BPE; transplanting to byte-level LM with validation-driven boundary pruning is unpublished. 0 hits in arXiv/Scholar/GitHub for "byte-level boundless BPE" or "cross-boundary byte tokenizer".
+phd_defensible: yes — boundary entropy theory + ablation against vanilla BPE-1024 + workshop paper feasible
+owner: D
+
+### TOK_learned_merge_auxiliary_predictor
+added_utc: 20260408T0635Z
+source: C30#6 — arXiv:2602.13940 RL tokenization + byte synthesis
+verdict: world-novel
+verdict_reason: arXiv:2602.13940 uses RL for tokenization but doesn't use a tiny auxiliary entropy predictor as the merge ranker. Combining a learned 2-layer byte predictor with frequency-rerank is novel synthesis. 0 GitHub hits for "auxiliary predictor BPE merge".
+phd_defensible: yes — clear gradient-through-discrete construction (Gumbel-softmax / STE) + ablation vs vanilla BPE
+owner: D
+
+### TOK_merge_residue_culling_litetoken_byte
+added_utc: 20260408T0635Z
+source: C30#6 — LiteToken Feb 2026 adapted to byte-level
+verdict: world-novel
+verdict_reason: LiteToken validated on word-level LMs only; applying residue culling to byte-LM vocab reallocation has 0 hits in literature.
+phd_defensible: yes — clear hypothesis (BPE leaves wasted residues), clean ablation, workshop paper feasible
+owner: D
+
+### EMB_mdct_polyphase_projection
+added_utc: 20260408T0635Z
+source: C30#6 — cross-domain pollination: MDCT filterbanks (MP3/AAC) + Bellanger 1983 polyphase
+verdict: world-novel
+verdict_reason: MDCT is used in audio codecs; polyphase decomposition is foundational in audio. NEITHER has been applied to vocabulary projection in any LM. 0 hits "MDCT embedding language model" or "polyphase vocabulary projection".
+phd_defensible: yes — clear cross-domain transplant (MDCT block-overlap → vocab cluster boundaries) + ablation against DCT/wavelet baselines
+owner: E
+
+### EMB_spherical_norm_compression
+added_utc: 20260408T0635Z
+source: C30#6 — Jina AI spherical compression (Jan 2026) + byte-vocab application
+verdict: world-novel
+verdict_reason: Jina applies spherical coordinate compression to RETRIEVAL embeddings, not generative LM token embeddings. Byte-vocab spherical structure is unstudied.
+phd_defensible: yes — clear hypothesis (byte-vocab tight cluster on sphere), entropy-adaptive bin theory, workshop paper feasible
+owner: E
+
 ### NRM_adaptive_resid_gating
 added_utc: 20260408T0545Z
 source: C30#5 — Qwen NeurIPS 2025 Gated Attention (arXiv:2505.06708) + control theory (Peri-LN stability) + byte-LM cross-domain synthesis
