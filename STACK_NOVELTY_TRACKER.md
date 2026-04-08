@@ -209,6 +209,33 @@ verdict_reason: paper arXiv:2503.16672 demonstrates 2:4 sparsity for inference; 
 phd_defensible: yes — clear theory (intrinsic ReLU² sparsity matches 2:4 hardware pattern), clear ablation (mask on/off vs throughput), workshop paper on "exploiting activation function statistics for hardware-aware training"
 owner: F
 
+### DYN_lyapunov_exponent_gradient_clip
+added_utc: 20260408T0800Z
+source: C30#9 — nonlinear dynamics control theory (Oseledec stability)
+verdict: world-novel
+verdict_reason: Lyapunov exponent estimation from grad-norm covariance has not been applied to LLM gradient clipping in any paper or comp PR. AdaGC/AGGC use frequency-based adaptive clipping; this is dynamics-based via dominant eigenvalue of the rolling Jacobian estimate.
+phd_defensible: yes — clean control-theory framing (Oseledec multiplicative ergodic theorem) + falsifiable (compare AdaGC vs Lyapunov clip) + workshop-feasible
+win_mechanism: -0.008 to -0.015 BPB via stability preserving step effectiveness
+owner: B (next infra fire)
+
+### DYN_phase_portrait_attractor_checkpoint
+added_utc: 20260408T0800Z
+source: C30#9 — dynamical systems theory (basin of attraction + soft trajectory recovery)
+verdict: world-novel
+verdict_reason: Phase portrait analysis of (loss, grad_norm) exists in arXiv:2602.23696, but NOT applied to checkpoint rollback. Soft restore from transient divergence is novel.
+phd_defensible: yes — clean basin-of-attraction theory + ablation against no-restore baseline + workshop-feasible
+win_mechanism: -0.010 to -0.020 BPB via fewer divergence episodes (early recovery preserves step budget)
+owner: G (floating utility)
+
+### DYN_bifurcation_mixed_precision_schedule
+added_utc: 20260408T0800Z
+source: C30#9 — control theory (bifurcation detection + Lyapunov-margin precision switching)
+verdict: world-novel
+verdict_reason: Cyclic precision (arXiv:2403.02243) uses fixed schedules. Driving precision switches by control-theory bifurcation detection (stability margin via eigenvalue Lyapunov certificate) is unpublished.
+phd_defensible: yes — bifurcation theory + stability margin theory + ablation
+win_mechanism: -0.008 to -0.015 BPB via precision elasticity (cheaper matmuls at stable phases → more steps in budget)
+owner: B/G
+
 ### NGR_interpolation_filter_byte_backoff
 added_utc: 20260408T0720Z
 source: C30#8 — Stanford NLP Chen-Goodman 1998 + byte-scale synthesis
