@@ -2214,3 +2214,41 @@ Total runtime: 4 × 25 min = 100 min. Will complete before 23:00 UTC end of run.
 ### Spend
 
 Pod uptime ~10h × $0.30/h = $3.00 raw + ops + H100 burn = **~$6.50 / $36 (18%)**. Plenty of headroom for both the multi-seed validation AND a successful H100 escalation cycle.
+
+---
+
+## AUDIT 20260408T0600Z (C180)
+
+**Pods**: 6 alive (B/C/D/E/F/G), all run_forever + train_gpt PIDs healthy, all at HEAD 85ef789.
+**Spend**: ~$8.10 session + $6.70 prior = ~$14.80 grand total / $36 cap (under soft cap $25 — normal mode).
+**In-flight**: 6 experiments (1 per pod, 900s wallclock, mostly pod_filter L0x candidates).
+**Layers locked**: 0 (no Section D LOCK lines yet — closest is L04_gated_attention with 5 confirmed-pass entries but C60 has not promoted).
+
+### World-novel re-audit (3 candidates)
+- **L05_norm_pct_dropout** — STILL world-novel. WebSearch returned "Biased Dropout" (magnitude per-unit) but NOT norm-percentile row filtering. GitHub 0 hits. Comp PRs 0 collisions.
+- **L06_asymmetric_skip_init** — STILL world-novel. LMSC-UNet 2025 + Additive U-Net Jan 2026 work on gated additive skips, but NOT init=0.5 as info bottleneck. GitHub 0 hits. Comp PRs 0 collisions.
+- **L07_asym_label_smoothing** — STILL world-novel. "Frequency-Aware Token Reduction" (Oct 2025) exists but is about token DROPPING not asymmetric softmax smoothing on rare-vs-frequent classes. GitHub 0 hits. Comp PRs 0 collisions.
+
+### Comp PR scan (last 24h, ~30 PRs)
+- Scanned PRs #1440–#1463. All use known techniques (TTT, GPTQ, FlashMuon, MoE+BigramHash, ByteJEPA, TMA megakernel + parallel residuals, depth recurrence variants, EngramLite + Mousse).
+- **NO PR collides with our 3 world-novels.** Zero direct hits.
+
+### Demotions this cycle
+NONE.
+
+### World-novel WIN count after audit
+**5 PROMOTION-READY** (all n=2 mean train_loss):
+1. L02_coprime_stride (no — comp port, demoted to comp-novel earlier audits)
+2. L04_gated_attention (no — comp port)
+3. **L05_norm_pct_dropout = 2.22795** ← world-novel WIN
+4. **L06_asymmetric_skip_init = 2.2276** ← world-novel WIN
+5. **L07_asym_label_smoothing = 2.22885** ← world-novel WIN
+
+### Best single-run train_loss
+**L04_gated_attention seed999 = 2.2148** (5-seed mean 2.22706).
+
+### Next C180 actions
+- No interaction-screen needed (0 layers locked).
+- Continue C90 to ship more world-novels for L01 + L03 + L09 + L10.
+- Mac/CPU worker pool still NOT running — track in next plan iteration.
+
