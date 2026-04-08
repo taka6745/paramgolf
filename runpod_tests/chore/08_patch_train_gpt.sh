@@ -2951,6 +2951,102 @@ else:
     else:
         print("  ✗ LSS_FOCAL_LOSS forward() sig anchor not found — skipping")
 
+# Patch 50 (C90 build 1308Z, comp-novel + PhD-defensible L09, NIGHT_MODE): USE_NGR_MODIFIED_KN=1 →
+# Modified Kneser-Ney inspired discount per n-gram bucket. Chen & Goodman 1998
+# showed Kneser-Ney is the best n-gram smoothing technique. We adapt the per-
+# bucket discount idea to our hash-bucketed log-prob bias tables:
+#
+#   discount[B] = 1 - H_normalized(softmax(table[B,:]))
+#                ∈ [0, 1]
+#
+# Buckets with concentrated distributions (low entropy) → discount near 1 (keep
+# bias). Buckets with flat distributions (high entropy) → discount near 0 (drop
+# bias). This is "soft" KN: continuous discount instead of binary backoff.
+#
+# Composes with NGRAM_BACKOFF (Patch 46): backoff selects which order to use,
+# THEN the discount applies via in-place mutation done at first forward.
+# Composes with NGRAM_GATE: gate multiplies the (already-discounted) bias.
+#
+# Lazy one-time in-place mutation at first forward (mirrors NGR_LOG_FREQ_INV
+# pattern). No apply-path change. Discount tables loaded from
+# data/{bigram,trigram,fourgram}_kn_discount.npy (built by chore/11_compute_kn_discounts.py).
+#
+# Strict pre-ship audit (NIGHT_MODE 1308Z): KN is published Chen-Goodman 1998
+# but never tested in any of 173 NGRAM PRs in the comp. Comp-novel + PhD-defensible.
+#
+# Idempotent via NGR_MODIFIED_KN_MARKER. Default OFF preserves baseline.
+if "NGR_MODIFIED_KN_MARKER" in content:
+    print("  ✓ NGR modified KN already applied")
+else:
+    # 1) Load discount buffers in NGRAM_BIAS init right after the fourgram load.
+    #    Anchor: the existing print line for fourgram load.
+    old_kn_init = """                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
+            except Exception as _e:
+                print("NGRAM_BIAS: fourgram load failed:", _e)"""
+    new_kn_init = """                print("NGRAM_BIAS: loaded fourgram", _fg.shape, "w=", self._ngram_w_fourgram)
+            except Exception as _e:
+                print("NGRAM_BIAS: fourgram load failed:", _e)
+            # NGR_MODIFIED_KN_MARKER: load per-bucket KN-style discount tables
+            self._kn_modified_enabled = bool(int(os.environ.get("USE_NGR_MODIFIED_KN", "0")))
+            self._kn_applied = False
+            self._bigram_kn_disc = torch.zeros(1)
+            self._trigram_kn_disc = torch.zeros(1)
+            self._fourgram_kn_disc = torch.zeros(1)
+            if self._kn_modified_enabled:
+                try:
+                    _bi_d = _np.load("./data/bigram_kn_discount.npy")
+                    self._bigram_kn_disc = torch.from_numpy(_bi_d).float()
+                    print("NGR_MODIFIED_KN: loaded bigram_kn_discount", _bi_d.shape, "mean=", float(_bi_d.mean()))
+                except Exception as _e:
+                    print("NGR_MODIFIED_KN: bigram_kn_discount load failed:", _e)
+                try:
+                    _tr_d = _np.load("./data/trigram_kn_discount.npy")
+                    self._trigram_kn_disc = torch.from_numpy(_tr_d).float()
+                    print("NGR_MODIFIED_KN: loaded trigram_kn_discount", _tr_d.shape, "mean=", float(_tr_d.mean()))
+                except Exception as _e:
+                    print("NGR_MODIFIED_KN: trigram_kn_discount load failed:", _e)
+                try:
+                    _fo_d = _np.load("./data/fourgram_kn_discount.npy")
+                    self._fourgram_kn_disc = torch.from_numpy(_fo_d).float()
+                    print("NGR_MODIFIED_KN: loaded fourgram_kn_discount", _fo_d.shape, "mean=", float(_fo_d.mean()))
+                except Exception as _e:
+                    print("NGR_MODIFIED_KN: fourgram_kn_discount load failed:", _e)"""
+    if old_kn_init in content:
+        content = content.replace(old_kn_init, new_kn_init)
+        print("  ✓ added NGR_MODIFIED_KN init (discount buffer loads)")
+    else:
+        print("  ✗ NGR_MODIFIED_KN init anchor not found — skipping")
+
+    # 2) Lazy one-time in-place mutation at first NGRAM_BIAS apply.
+    #    Anchor on the elif branch from NGRAM_BACKOFF (Patch 46) which made the
+    #    original `if` into `elif`.
+    old_kn_apply = """        elif self._ngram_enabled and self._bigram_tab.numel() > 1:
+            _ids_flat = input_ids.reshape(-1).long()  # (B*S,)"""
+    new_kn_apply = """        elif self._ngram_enabled and self._bigram_tab.numel() > 1:
+            # NGR_MODIFIED_KN_MARKER: lazy one-time discount mul (in-place) at first forward
+            if (
+                getattr(self, "_kn_modified_enabled", False)
+                and not getattr(self, "_kn_applied", True)
+            ):
+                with torch.no_grad():
+                    if self._bigram_kn_disc.numel() > 1 and self._bigram_kn_disc.shape[0] == self._bigram_tab.shape[0]:
+                        self._bigram_kn_disc = self._bigram_kn_disc.to(self._bigram_tab.device, self._bigram_tab.dtype)
+                        self._bigram_tab.mul_(self._bigram_kn_disc.unsqueeze(-1))
+                    if self._trigram_kn_disc.numel() > 1 and self._trigram_tab.numel() > 1 and self._trigram_kn_disc.shape[0] == self._trigram_tab.shape[0]:
+                        self._trigram_kn_disc = self._trigram_kn_disc.to(self._trigram_tab.device, self._trigram_tab.dtype)
+                        self._trigram_tab.mul_(self._trigram_kn_disc.unsqueeze(-1))
+                    if self._fourgram_kn_disc.numel() > 1 and self._fourgram_tab.numel() > 1 and self._fourgram_kn_disc.shape[0] == self._fourgram_tab.shape[0]:
+                        self._fourgram_kn_disc = self._fourgram_kn_disc.to(self._fourgram_tab.device, self._fourgram_tab.dtype)
+                        self._fourgram_tab.mul_(self._fourgram_kn_disc.unsqueeze(-1))
+                self._kn_applied = True
+                print("NGR_MODIFIED_KN: applied per-bucket discount mul (in-place, one-time)")
+            _ids_flat = input_ids.reshape(-1).long()  # (B*S,)"""
+    if old_kn_apply in content:
+        content = content.replace(old_kn_apply, new_kn_apply)
+        print("  ✓ added NGR_MODIFIED_KN lazy in-place mul")
+    else:
+        print("  ✗ NGR_MODIFIED_KN apply anchor not found — skipping")
+
 # Patch 49 (C90 build 1303Z, world-novel L07 #2 NIGHT_MODE): USE_LSS_HELLINGER_BREGMAN=1 →
 # Hellinger distance loss (symmetric Bregman-family divergence) as primary training
 # objective, replacing CE. Standard CE is asymmetric KL: D_KL(p_target || p_model)
@@ -3179,6 +3275,7 @@ expected = [
     "MUONEQ_R_MARKER",
     "NGRAM_BACKOFF_MARKER",
     "NGRAM_BIAS_MARKER",
+    "NGR_MODIFIED_KN_MARKER",
     "NGR_LOG_FREQ_INV_MARKER",
     "NGRAM_GATE_MARKER",
     "NORM_PCT_DROPOUT_MARKER",

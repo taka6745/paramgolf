@@ -27,14 +27,10 @@
 - **SSH over exposed TCP**: TBD (image only showed proxy line — request from user if proxy fails)
 - **Direct TCP**: TBD
 
-## Pod 4 — paramgolf-test-3 (RTX 3090 24 GB) ⚠️ NETWORK OUTAGE 0720Z
+## Pod 4 — paramgolf-test-3 (REMOVED 1310Z — TOMBSTONE)
 
-- **ID**: `1nqdd6aajwqofk`
-- **User hash**: `64411378`
-- **SSH proxy**: `ssh 1nqdd6aajwqofk-64411378@ssh.runpod.io -i ~/.ssh/id_ed25519`
-- **SSH over exposed TCP**: `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519`
-- **Direct TCP**: `99.69.17.69:10323 → :22`
-- **STATUS 2026-04-08 0720Z**: RunPod-side network outage. Pod is unreachable via both proxy (`100.65.19.120:2002` connect timeout) and direct TCP (`99.69.17.69:10323` network unreachable). RunPod posted: "This server has recently suffered a network outage and may have spotty network connectivity. We aim to restore connectivity soon... You will not be charged during any network downtime." **No spend impact.** Pod-D-exclusive experiments (11 entries) reassigned to `pod_filter=["D","G"]` so Pod G can pick them up. Skip Pod D in C5 sweeps until the outage clears (saves ~30s SSH timeout per fire).
+- **ID**: `1nqdd6aajwqofk` (DELETED from RunPod fleet)
+- **Reason**: Network outage 0720Z never cleared. User confirmed pod removal at 1310Z via screenshot review.
 
 ## Pod 5 — paramgolf-test-4 (RTX 3090 24 GB)
 
@@ -60,19 +56,49 @@
 - **SSH over exposed TCP**: `ssh root@87.197.146.56 -p 40261 -i ~/.ssh/id_ed25519`
 - **Direct TCP**: `87.197.146.56:40261 → :22`
 
+## Pod 8 — paramgolf-comp-H (RTX 3090 24 GB) — NIGHT_MODE NEW
+
+- **ID**: `5uwm7avkq0veda`
+- **User hash**: `64411532`
+- **SSH proxy**: `ssh 5uwm7avkq0veda-64411532@ssh.runpod.io -i ~/.ssh/id_ed25519`
+- **SSH over exposed TCP**: `ssh root@194.26.196.213 -p 34755 -i ~/.ssh/id_ed25519`
+- **Direct TCP**: `194.26.196.213:34755 → :22`
+- **Role**: COMP — compression / quant novelties (CMP_context_adaptive_rANS PhD swing)
+
+## Pod 9 — paramgolf-infra-I (RTX 3090 24 GB) — NIGHT_MODE NEW
+
+- **ID**: `p9dqw16bzky22c`
+- **User hash**: `64411470`
+- **SSH proxy**: `ssh p9dqw16bzky22c-64411470@ssh.runpod.io -i ~/.ssh/id_ed25519`
+- **SSH over exposed TCP**: `ssh root@194.26.196.211 -p 20455 -i ~/.ssh/id_ed25519`
+- **Direct TCP**: `194.26.196.211:20455 → :22`
+- **Role**: INFRA — kernels / speed (KER_cudagraph_persistent_kernel_fusion)
+
+## Pod 10 — paramgolf-stretch-J (RTX 3090 24 GB) — NIGHT_MODE NEW
+
+- **ID**: `5lj9mdhy3jewp8`
+- **User hash**: `64411cca`
+- **SSH proxy**: `ssh 5lj9mdhy3jewp8-64411cca@ssh.runpod.io -i ~/.ssh/id_ed25519`
+- **SSH over exposed TCP**: `ssh root@67.223.143.80 -p 16656 -i ~/.ssh/id_ed25519`
+- **Direct TCP**: `67.223.143.80:16656 → :22`
+- **Role**: STRETCH — risky installs (Hymba Mamba-2 + attention hybrid)
+
 ---
 
-## Quick reference table (6 pods alive)
+## Quick reference table (8 pods alive — Pod D removed 1310Z)
 
 | pod_id | name | GPU | id | direct ssh | proxy |
 |---|---|---|---|---|---|
 | ~~A~~ | ~~paramgolf-v2~~ | ~~RTX 3080 Ti~~ | ~~tyf0q5l1kgefgx~~ | REMOVED | REMOVED |
-| **B** | paramgolf-test-1 | RTX 3090 24 GB | `vwkkjkevpvyrfs` | `ssh root@194.26.196.156 -p 19650 -i ~/.ssh/id_ed25519` | `vwkkjkevpvyrfs-6441169a@ssh.runpod.io` |
-| **C** | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | (proxy only) | `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io` ⚠️ SSH BROKEN 0402Z |
-| **D** | paramgolf-test-3 | RTX 3090 24 GB | `1nqdd6aajwqofk` | `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519` | `1nqdd6aajwqofk-64411378@ssh.runpod.io` |
-| **E** | paramgolf-test-4 | RTX 3090 24 GB | `9g10r6i4rst296` | `ssh root@99.69.17.69 -p 11168 -i ~/.ssh/id_ed25519` | `9g10r6i4rst296-644114cb@ssh.runpod.io` |
-| **F** | paramgolf-test-5 | RTX 3090 24 GB | `373y5iemxa5s9o` | `ssh root@194.26.196.165 -p 18620 -i ~/.ssh/id_ed25519` | `373y5iemxa5s9o-64411631@ssh.runpod.io` |
-| **G** | paramgolf-test-6 | RTX 4070 Ti 12 GB | `7yp2f7j6rm9unm` | `ssh root@87.197.146.56 -p 40261 -i ~/.ssh/id_ed25519` | `7yp2f7j6rm9unm-64410d97@ssh.runpod.io` |
+| **B** | paramgolf-test-1 | RTX 3090 24 GB | `vwkkjkevpvyrfs` | `ssh root@194.26.196.156 -p 19650` | `vwkkjkevpvyrfs-6441169a@ssh.runpod.io` |
+| **C** | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | (proxy only) | `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io` |
+| ~~D~~ | ~~paramgolf-test-3~~ | ~~RTX 3090 24 GB~~ | ~~1nqdd6aajwqofk~~ | REMOVED 1310Z | REMOVED 1310Z |
+| **E** | paramgolf-test-4 | RTX 3090 24 GB | `9g10r6i4rst296` | `ssh root@99.69.17.69 -p 11168` | `9g10r6i4rst296-644114cb@ssh.runpod.io` |
+| **F** | paramgolf-test-5 | RTX 3090 24 GB | `373y5iemxa5s9o` | `ssh root@194.26.196.165 -p 18620` | `373y5iemxa5s9o-64411631@ssh.runpod.io` |
+| **G** | paramgolf-test-6 | RTX 4070 Ti 12 GB | `7yp2f7j6rm9unm` | `ssh root@87.197.146.56 -p 40261` | `7yp2f7j6rm9unm-64410d97@ssh.runpod.io` |
+| **H** | paramgolf-comp-H | RTX 3090 24 GB | `5uwm7avkq0veda` | `ssh root@194.26.196.213 -p 34755` | `5uwm7avkq0veda-64411532@ssh.runpod.io` |
+| **I** | paramgolf-infra-I | RTX 3090 24 GB | `p9dqw16bzky22c` | `ssh root@194.26.196.211 -p 20455` | `p9dqw16bzky22c-64411470@ssh.runpod.io` |
+| **J** | paramgolf-stretch-J | RTX 3090 24 GB | `5lj9mdhy3jewp8` | `ssh root@67.223.143.80 -p 16656` | `5lj9mdhy3jewp8-64411cca@ssh.runpod.io` |
 
 ## Layer ownership after Pod A loss
 
