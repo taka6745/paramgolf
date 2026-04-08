@@ -2951,6 +2951,69 @@ else:
     else:
         print("  ✗ LSS_FOCAL_LOSS forward() sig anchor not found — skipping")
 
+# Patch 49 (C90 build 1303Z, world-novel L07 #2 NIGHT_MODE): USE_LSS_HELLINGER_BREGMAN=1 →
+# Hellinger distance loss (symmetric Bregman-family divergence) as primary training
+# objective, replacing CE. Standard CE is asymmetric KL: D_KL(p_target || p_model)
+# which over-weights common bytes on imbalanced byte vocab. Hellinger is symmetric:
+#   H(p, q) = (1/2) · Σ_i (√p_i - √q_i)²  =  1 - Σ_i √(p_i · q_i)
+# For one-hot byte targets reduces to: H(target, q) = 1 - √(q[target_index]).
+# The sqrt's smaller slope at small q[target] pushes UP rare-byte probs more
+# aggressively than CE → reduces gradient bias on imbalanced byte vocab.
+#
+# Strict pre-ship audit (NIGHT_MODE 1303Z): 0 lit hits, 0 GitHub hits, 0 comp PR
+# hits for hellinger/bregman in byte-LM context. Approved as world-novel-candidate.
+#
+# L07 status: focal_loss FAILED n=1 (1.4151), asym_label_smoothing DEMOTED,
+# byte_weight marginal -0.0004, mtp screened-fail → ZERO L07 confirmed wins.
+# Composition: focal > hellinger > CE precedence in nested ternary.
+# Idempotent via LSS_HELLINGER_BREGMAN_MARKER.
+if "LSS_HELLINGER_BREGMAN_MARKER" in content:
+    print("  ✓ LSS hellinger bregman already applied")
+else:
+    # 1) Enable flag: anchor on the LSS_FOCAL_LOSS init line, place adjacent.
+    old_hellinger_init = """        self._focal_loss_enabled = bool(int(os.environ.get("USE_LSS_FOCAL_LOSS", "0")))"""
+    new_hellinger_init = """        self._focal_loss_enabled = bool(int(os.environ.get("USE_LSS_FOCAL_LOSS", "0")))
+        # LSS_HELLINGER_BREGMAN_MARKER: symmetric Bregman-family loss (L07 novelty).
+        # Gated by env var; forward path consulted only when focal is OFF.
+        self._hellinger_loss_enabled = bool(int(os.environ.get("USE_LSS_HELLINGER_BREGMAN", "0")))"""
+    if old_hellinger_init in content:
+        content = content.replace(old_hellinger_init, new_hellinger_init)
+        print("  ✓ added LSS_HELLINGER_BREGMAN enable flag")
+    else:
+        print("  ✗ LSS_HELLINGER_BREGMAN init anchor (focal flag) not found — skipping")
+
+    # 2) Extend the focal ternary in the forward loss path with a nested
+    #    hellinger branch. Precedence: focal > hellinger > CE.
+    old_hellinger_ce = """(self._focal_loss_compute(logits, targets) if getattr(self, "_focal_loss_enabled", False) else F.cross_entropy(logits.float(), targets, reduction="mean"))"""
+    new_hellinger_ce = """(self._focal_loss_compute(logits, targets) if getattr(self, "_focal_loss_enabled", False) else (self._hellinger_loss_compute(logits, targets) if getattr(self, "_hellinger_loss_enabled", False) else F.cross_entropy(logits.float(), targets, reduction="mean")))"""
+    if content.count(old_hellinger_ce) == 1:
+        content = content.replace(old_hellinger_ce, new_hellinger_ce, 1)
+        print("  ✓ extended forward ternary with LSS_HELLINGER_BREGMAN branch")
+    else:
+        _n = content.count(old_hellinger_ce)
+        print(f"  ✗ LSS_HELLINGER_BREGMAN ternary anchor has {_n} matches (expected 1) — skipping")
+
+    # 3) Inject _hellinger_loss_compute helper before _focal_loss_compute (so
+    #    Patch 48's def forward anchor stays untouched on re-runs).
+    old_hellinger_helper_sig = """    def _focal_loss_compute(self, logits: Tensor, targets: Tensor) -> Tensor:"""
+    new_hellinger_helper_sig = """    def _hellinger_loss_compute(self, logits: Tensor, targets: Tensor) -> Tensor:
+        # LSS_HELLINGER_BREGMAN_MARKER apply: Hellinger distance for one-hot targets.
+        # H(target, q) = 1 - √(q[target_index]), where q = softmax(logits).
+        # Symmetric Bregman-family divergence; reduces gradient bias vs CE
+        # on highly imbalanced byte vocab (pushes UP rare-byte probs harder).
+        probs = F.softmax(logits.float(), dim=-1)
+        targets_flat = targets.reshape(-1)
+        p_target = probs.gather(-1, targets_flat.unsqueeze(-1)).squeeze(-1).clamp_min(1e-7)
+        loss_per_token = 1.0 - p_target.sqrt()
+        return loss_per_token.mean()
+
+    def _focal_loss_compute(self, logits: Tensor, targets: Tensor) -> Tensor:"""
+    if old_hellinger_helper_sig in content:
+        content = content.replace(old_hellinger_helper_sig, new_hellinger_helper_sig, 1)
+        print("  ✓ added LSS_HELLINGER_BREGMAN _hellinger_loss_compute helper method")
+    else:
+        print("  ✗ LSS_HELLINGER_BREGMAN helper anchor (_focal_loss_compute sig) not found — skipping")
+
 # Patch 47 (C90 build 1133Z, world-novel L08 #1): USE_OPT_RIEMANNIAN_GRAM_QKV=1 →
 # Apply Riemannian Stiefel-manifold tangent-space projection to the gradient
 # of attention Q/K/V weight matrices BEFORE the standard Newton-Schulz
@@ -3110,6 +3173,7 @@ expected = [
     "LEGAL_TTT_MARKER",
     "LN_SCALE_MARKER",
     "LSS_FOCAL_LOSS_MARKER",
+    "LSS_HELLINGER_BREGMAN_MARKER",
     "MOUSSE_MARKER",
     "MTP_MARKER",
     "MUONEQ_R_MARKER",
