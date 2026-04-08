@@ -10,8 +10,11 @@ See `STACK_NOVELTY_PLAN.md` for the full schema spec and the RemoteTrigger paylo
 
 | layer | slot | novelty_id | world_novel | status | tl_delta | bpb_delta | owner_pod | updated_utc |
 |---|---|---|---|---|---|---|---|---|
+| L02_data | 1 | L02_coprime_stride | no | screened-pass | -0.16 (2.6818 @ step 500; mid-run reading at C5#6) |  | D | 20260408T0257Z |
+| L04_attention | 1 | L04_gated_attention | no | **screened-pass HUGE** | **-0.61** (2.2295 @ step 1400; new session best, beats SP6_seed1337=2.4499 by -0.22) |  | G | 20260408T0257Z |
 | L07_loss | 1 | L07_byte_weight | no | screened-pass | -0.34 (vs CHAMP_L5_seed13=2.84 baseline; 2.50 result) |  | F | 20260408T0251Z |
 | L08_optimizer | 1 | L08_normuon | no | screened-pass | -0.32 (vs CHAMP_L5_seed13=2.84; 2.5208 result) |  | B | 20260408T0251Z |
+| L09_ngram | 1 | L09_entropy_adaptive | no | screened-pass | -0.32 (2.5201 @ step 1300) |  | C | 20260408T0257Z |
 
 <!-- rows added at runtime; status ∈ pending|in-flight|screened-pass|screened-fail|confirmed-win|confirmed-fail|demoted -->
 <!-- world_novel ∈ yes|no|auditing -->
