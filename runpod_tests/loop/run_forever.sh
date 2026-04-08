@@ -39,6 +39,20 @@ preflight() {
         echo $! > "$PIDFILE"
         echo "PREFLIGHT: launched gpu_util sampler pid=$(cat $PIDFILE)"
     fi
+
+    # 4. Launch the CPU worker pool if not already running.
+    # Addresses PD8 (max out CPU+RAM alongside GPU). Workers consume jobs from
+    # data/cpu_jobs/pending/ and write results to data/cpu_jobs/done/. Idempotent
+    # via PID file. Job emitter runs once per loop iter to top up the queue.
+    CPU_PIDFILE=runpod_tests/loop/cpu_workers.pid
+    if [ ! -f "$CPU_PIDFILE" ] || ! kill -0 "$(cat "$CPU_PIDFILE" 2>/dev/null)" 2>/dev/null; then
+        nohup python3 -u runpod_tests/loop/cpu_workers.py \
+            >> runpod_tests/loop/cpu_workers.log 2>&1 &
+        sleep 1
+        echo "PREFLIGHT: launched cpu_workers (pidfile=$CPU_PIDFILE)"
+    fi
+    # Top up the job queue every loop iteration (cheap, idempotent).
+    python3 runpod_tests/loop/cpu_jobs_emitter.py 2>&1 | tail -3 || true
 }
 
 # Take over the GPU (only kill OTHER experiment_runner instances)

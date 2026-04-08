@@ -12,4 +12,9 @@ logs/
 runpod_tests/loop/pod_id.txt
 runpod_tests/loop/gpu_util.log
 runpod_tests/loop/gpu_util.pid
+runpod_tests/loop/cpu_workers.pid
+runpod_tests/loop/cpu_workers.log
+data/cpu_jobs/pending/
+data/cpu_jobs/in_progress/
+data/cpu_jobs/done/
 POD_HOSTS.env
