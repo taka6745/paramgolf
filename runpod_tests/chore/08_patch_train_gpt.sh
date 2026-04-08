@@ -19,6 +19,22 @@ set -e
 echo "=== PATCH train_gpt.py FOR PyTorch 2.4 ==="
 echo
 
+# DEFENSIVE FIX (NIGHT_MODE 1410Z): some old train_gpt.py.bak files were missing
+# `from torch import Tensor, nn` (only had `from torch import Tensor`). This causes
+# NameError: name 'nn' is not defined at the first nn.Module class definition.
+# The fix is idempotent — adds `, nn` to the import line if it's missing.
+# Also delete .bak files so run_forever preflight doesn't restore the broken version.
+if [ -f train_gpt.py.bak ]; then
+    if grep -qE "^from torch import Tensor$" train_gpt.py.bak; then
+        echo "  ⚠ found stale train_gpt.py.bak missing 'nn' import — deleting"
+        rm -f train_gpt.py.bak
+    fi
+fi
+if grep -qE "^from torch import Tensor$" train_gpt.py 2>/dev/null; then
+    echo "  ⚠ train_gpt.py missing 'nn' in imports — adding via sed"
+    sed -i.imptmp 's/^from torch import Tensor$/from torch import Tensor, nn/' train_gpt.py && rm -f train_gpt.py.imptmp
+fi
+
 # Check if torch supports enable_gqa
 SUPPORTS_GQA=$(python3 -c "
 import torch
@@ -1980,11 +1996,13 @@ else:
 if "KER_TMA_MEGAKERNEL_MARKER" in content:
     pass
 else:
-    # Anchor A: insert lazy import shim near the existing CastedLinear import area
-    # (using the import line for `from torch import Tensor` as a stable anchor that
-    # appears once and is invariant under all 41 prior patches).
-    old_import_anchor = "from torch import Tensor"
-    new_import_anchor = """from torch import Tensor
+    # Anchor A: insert lazy import shim near the existing CastedLinear import area.
+    # NIGHT_MODE 1413Z BUGFIX: previous anchor "from torch import Tensor" was a SUBSTRING
+    # match that would catch BOTH "from torch import Tensor" AND "from torch import Tensor, nn"
+    # — leaving ", nn" stranded after the new shim block, which broke imports.
+    # Now using the precise full line "from torch import Tensor, nn" (the canonical form).
+    old_import_anchor = "from torch import Tensor, nn"
+    new_import_anchor = """from torch import Tensor, nn
 # KER_TMA_MEGAKERNEL_MARKER: lazy import the Triton TMA megakernel helper.
 # Falls through to standard path on cheap pods (3090, 4070 Ti) where TMA is unavailable.
 try:
