@@ -131,6 +131,25 @@ Schema for every row:
 
 ---
 
+---
+
+## Speed/throughput world-novel candidates (cross-layer, added 20260408T0349Z)
+
+**Rule**: each speed candidate is tagged to the layer it touches. Promotion gate = step-time reduction ≥15% AND no train_loss regression > 0.005 (n=2 seeds).
+
+| priority | name | source | hypothesis | expected_delta | novelty_estimate | code_skeleton_loc | added_utc | layer |
+|---|---|---|---|---|---|---|---|---|
+| 1 | SPD_rmsnorm_fused_into_linear | mathematically equivalent, mirrors LayerNorm-fusion in TensorRT | the next linear after RMSNorm absorbs the RMS scale by precomputing `W_fused = W * (1/||x||)`; eliminates the RMSNorm op entirely on the forward path | -8 to -12% step time, 0 quality cost | **world-novel-candidate** for byte-LM application | 60 | 20260408T0349Z | L06 |
+| 2 | SPD_ngram_bias_tile_cache | custom synthesis | precompute the top-K n-gram bias tile (most common contexts) into a fp16 cache; skip the gather entirely on cache hits → memory-bound op becomes register-resident | -10 to -20% step time on n-gram-heavy steps | **world-novel-candidate** | 90 | 20260408T0349Z | L09 |
+| 3 | SPD_triton_attention_gqa_8h_4kv | Triton + our specific GQA shape (8h, 4kv, head_dim=64) | hand-tuned Triton kernel skips F.scaled_dot_product_attention's general-case overhead at our small batch; fused softmax + dropout + projection | -15 to -25% attention forward time | comp-novel (Triton GQA exists, our specific shape unknown) | 200 | 20260408T0349Z | L04 |
+| 4 | SPD_quantized_intermediate_dequant_fused | NVIDIA W8A8 work + custom synthesis | store FFN intermediate as int8, dequant inside the next matmul kernel (no fp16 buffer materialization); cuts FFN memory traffic in half | -10 to -15% FFN step time | **world-novel-candidate** for byte-LM at this scale | 130 | 20260408T0349Z | L05 |
+| 5 | SPD_pinned_prefetch_4x_dataloader | PyTorch dataloader best practice taken to extreme | pin host memory + prefetch_factor=4 + 4 worker threads; eliminates data-loader stalls on the GPU | -3 to -8% step time, mainly on small-batch warmup | comp-novel | 25 | 20260408T0349Z | L02 |
+| 6 | SPD_torch_compile_dynamic_partial | PyTorch 2.x + careful subgraph selection | use `torch.compile(dynamic=True, fullgraph=False, mode='reduce-overhead')` ONLY on the FFN forward (skip n-gram + attention which break compile); selective compilation to capture safe wins | -5 to -12% step time | comp-novel (general torch.compile is known, this specific subgraph carve-out for our stack is not) | 40 | 20260408T0349Z | L05 |
+
+**3 of these 6 are world-novel-candidate**: `SPD_rmsnorm_fused_into_linear` (L06), `SPD_ngram_bias_tile_cache` (L09), `SPD_quantized_intermediate_dequant_fused` (L05). The C90 build cron should ship them in that priority order (lowest LOC first).
+
+---
+
 ## Backlog hygiene rules
 
 - C30 cron appends to the BOTTOM of each layer's table.
