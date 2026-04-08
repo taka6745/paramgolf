@@ -660,7 +660,7 @@
   {
     "name": "L04_gated_attention_seed42",
     "pod_filter": [
-      "A"
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",
@@ -678,7 +678,7 @@
   {
     "name": "L04_gated_attention_seed1337",
     "pod_filter": [
-      "A"
+      "G"
     ],
     "USE_LEAKY_RELU": "1",
     "USE_NGRAM_BIAS": "1",

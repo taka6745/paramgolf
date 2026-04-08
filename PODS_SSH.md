@@ -1,17 +1,15 @@
-# PODS_SSH.md — RunPod test fleet (2026-04-08)
+# PODS_SSH.md — RunPod test fleet (2026-04-08, updated post-Pod-A loss)
 
-7 pods spun up for parallel TEST_PLAN_TODAY.md execution. All use community cloud (direct TCP SSH preferred over the `ssh.runpod.io` proxy because community pods can have proxy quirks).
+**6 pods alive.** Pod A (`tyf0q5l1kgefgx` / paramgolf-v2 / RTX 3080 Ti) was removed from the fleet during the campaign session — its row has been kept here as a tombstone for history but it's GONE. The campaign now runs on Pods B–G.
 
 **Key**: SSH key is `~/.ssh/id_ed25519`. Workspace path on every pod: `/workspace`.
 
-## Pod 1 — paramgolf-v2 (ORIGINAL pod, RTX 3080 Ti 12 GB)
+## Pod 1 — paramgolf-v2 (REMOVED — TOMBSTONE)
 
 - **ID**: `tyf0q5l1kgefgx`
-- **User hash**: `64410a6f`
-- **SSH proxy**: `ssh tyf0q5l1kgefgx-64410a6f@ssh.runpod.io -i ~/.ssh/id_ed25519`
-- **SSH over exposed TCP**: `ssh root@136.61.20.181 -p 4129 -i ~/.ssh/id_ed25519`
-- **Direct TCP**: `136.61.20.181:4129 → :22`
-- **Role**: anchor pod, has the existing loop, results.jsonl history, and `data/` artifacts
+- **Status**: REMOVED from fleet 2026-04-08 (cause unknown — possibly billed out or user-stopped)
+- **Was**: RTX 3080 Ti 12 GB anchor with the original session's `results.jsonl` history and `data/` artifacts
+- **Implication**: any data that was only on this pod (logs, n-gram tables) is GONE. The repo on GitHub is unaffected.
 
 ## Pod 2 — paramgolf-test-1 (RTX 3090 24 GB)
 
@@ -63,17 +61,28 @@
 
 ---
 
-## Quick reference table
+## Quick reference table (6 pods alive)
 
-| # | name | GPU | id | direct ssh |
-|---|---|---|---|---|
-| 1 | paramgolf-v2 | RTX 3080 Ti 12 GB | `tyf0q5l1kgefgx` | `ssh root@136.61.20.181 -p 4129 -i ~/.ssh/id_ed25519` |
-| 2 | paramgolf-test-1 | RTX 3090 24 GB | `vwkkjkevpvyrfs` | `ssh root@194.26.196.156 -p 19650 -i ~/.ssh/id_ed25519` |
-| 3 | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | TBD (proxy: `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io`) |
-| 4 | paramgolf-test-3 | RTX 3090 24 GB | `1nqdd6aajwqofk` | `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519` |
-| 5 | paramgolf-test-4 | RTX 3090 24 GB | `9g10r6i4rst296` | `ssh root@99.69.17.69 -p 11168 -i ~/.ssh/id_ed25519` |
-| 6 | paramgolf-test-5 | RTX 3090 24 GB | `373y5iemxa5s9o` | `ssh root@194.26.196.165 -p 18620 -i ~/.ssh/id_ed25519` |
-| 7 | paramgolf-test-6 | RTX 4070 Ti 12 GB | `7yp2f7j6rm9unm` | `ssh root@87.197.146.56 -p 40261 -i ~/.ssh/id_ed25519` |
+| pod_id | name | GPU | id | direct ssh | proxy |
+|---|---|---|---|---|---|
+| ~~A~~ | ~~paramgolf-v2~~ | ~~RTX 3080 Ti~~ | ~~tyf0q5l1kgefgx~~ | REMOVED | REMOVED |
+| **B** | paramgolf-test-1 | RTX 3090 24 GB | `vwkkjkevpvyrfs` | `ssh root@194.26.196.156 -p 19650 -i ~/.ssh/id_ed25519` | `vwkkjkevpvyrfs-6441169a@ssh.runpod.io` |
+| **C** | paramgolf-test-2 | RTX 3090 24 GB | `1yo8wu8n77nbv8` | (proxy only) | `1yo8wu8n77nbv8-64411ad5@ssh.runpod.io` |
+| **D** | paramgolf-test-3 | RTX 3090 24 GB | `1nqdd6aajwqofk` | `ssh root@99.69.17.69 -p 10323 -i ~/.ssh/id_ed25519` | `1nqdd6aajwqofk-64411378@ssh.runpod.io` |
+| **E** | paramgolf-test-4 | RTX 3090 24 GB | `9g10r6i4rst296` | `ssh root@99.69.17.69 -p 11168 -i ~/.ssh/id_ed25519` | `9g10r6i4rst296-644114cb@ssh.runpod.io` |
+| **F** | paramgolf-test-5 | RTX 3090 24 GB | `373y5iemxa5s9o` | `ssh root@194.26.196.165 -p 18620 -i ~/.ssh/id_ed25519` | `373y5iemxa5s9o-64411631@ssh.runpod.io` |
+| **G** | paramgolf-test-6 | RTX 4070 Ti 12 GB | `7yp2f7j6rm9unm` | `ssh root@87.197.146.56 -p 40261 -i ~/.ssh/id_ed25519` | `7yp2f7j6rm9unm-64410d97@ssh.runpod.io` |
+
+## Layer ownership after Pod A loss
+
+| pod_id | layers owned | rationale |
+|---|---|---|
+| B | L08 optimizer | NorMuon / Muon variants |
+| C | L09 n-gram engine | biggest leverage layer |
+| D | L01 tokenizer + L02 data pipeline | rebuild infrastructure |
+| E | L03 embedding + L06 norm/residuals | absorbed L06 from Pod A |
+| F | L07 loss + L05 FFN | absorbed L05 from Pod A |
+| G | L04 attention + L10 compression stretches | absorbed L04 from Pod A; floating utility for stretches (Hymba, Triton) |
 
 ---
 
