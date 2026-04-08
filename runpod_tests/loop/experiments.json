@@ -1,5 +1,62 @@
 [
   {
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "1500",
+    "SKIP_FINAL_EVAL": "0",
+    "SEED": "1337",
+    "name": "L05_norm_pct_dropout_S2confirm_seed1337",
+    "pod_filter": [
+      "F"
+    ],
+    "USE_NORM_PCT_DROPOUT": "1"
+  },
+  {
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "1500",
+    "SKIP_FINAL_EVAL": "0",
+    "SEED": "42",
+    "name": "L09_entropy_adaptive_S2confirm_seed42",
+    "pod_filter": [
+      "C"
+    ],
+    "USE_ENTROPY_ADAPTIVE_NGRAM": "1"
+  },
+  {
+    "USE_LEAKY_RELU": "1",
+    "USE_NGRAM_BIAS": "1",
+    "USE_COPRIME_STRIDE": "1",
+    "USE_ENGRAM_LITE": "1",
+    "TRAIN_SEQ_LEN": "1024",
+    "TRAIN_BATCH_TOKENS": "65536",
+    "NGRAM_W_BIGRAM": "0.25",
+    "NGRAM_W_TRIGRAM": "0.25",
+    "NGRAM_W_FOURGRAM": "0.20",
+    "MAX_WALLCLOCK_SECONDS": "1500",
+    "SKIP_FINAL_EVAL": "0",
+    "SEED": "42",
+    "name": "L08_chebns_S2confirm_seed42",
+    "pod_filter": [
+      "B"
+    ],
+    "USE_OPT_CHEBYSHEV_NS": "1"
+  },
+  {
     "name": "L11_kertma_seed42",
     "pod_filter": [
       "B"
