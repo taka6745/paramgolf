@@ -7,16 +7,29 @@
 
 **Protocol (as of 0840Z)**: E1 and E2 are full-fat baseline runs (TTT on, quant eval, the works — ~27 min each). **E3-E5 run in fast-screen mode**: `PREQUANT_TTT_EPOCHS=0` + `MAX_WALLCLOCK_SECONDS=120`, saving ~26 min/run. Fast-screen is for rejecting broken/neutral patches via seed-matched A/B vs E2 baseline. Promising winners get promoted to a "champion stack" full-fat run at the end to measure final submission val_bpb.
 
-## Experiments
+## Experiments (v2 — SPEED-FOCUSED, 1020Z)
 
-| exp | description | status | val_bpb (unquant / quant) | ms/step | log | notes |
-|---|---|---|---|---|---|---|
-| **E1** | Shot 0e validation: Phase 1 stack + fix, `bash run.sh` direct, no compile, TTT=0 | ✅ **done** | 3.03477 / **3.05683** | **2933** | `phase2/run_logs/e1_crash_0644Z.log` (initial crash) | **Shot 0e FIXED** — quant gap 0.02206 BPB (was -2.62). Artifact 11.1 MB ✅. 37 steps in 120s cap. |
-| E2 | Phase 2 Shot 1 (torch.compile on) via phase2/run.sh | ✅ **done** | 2.92033 post-EMA / **1.42528 post-TTT** / 3.29089 quant ⚠️ | **1581** (1.85× vs E1) | `/tmp/paramgolf_bootstrap.log` | Speed win ✅. **New bug**: quant gap 1.866 BPB when TTT on (vs E1's 0.022). Post-TTT unquant 1.425 matches H100 reference — TTT works. Does not block E3-E5 fast-screen (TTT=0). |
-| E3 | Code + test Shot 17 (fuzzy LR bandit) | ❌ **done (SKIP)** | 3.21635 / 2.95165 | 1592 | `/tmp/paramgolf_bootstrap.log` | Bandit LOSS at matched steps vs E2 (step 30 +0.073, 50 +0.027, 60 +0.032 worse). High-LR arm explosion at step 2. Code works, patch skipped in champion stack. |
-| E4 | Code + test Shot 0b (streaming KV eval, ~250 LOC) | **deferred** | | | | **Non-critical for fast-screen** (eval speedup only — affects sliding eval which is disabled). Too big for single fire (250 LOC). Revisit after E5 + quant-gap bug. |
-| E5 | Code + test Shot 10 (Parameter Banking + Parallel Muon, ~200 LOC) | **pending_wip** | | | | Muon.step refactor to batch NS across same-shape params (~40-200 LOC depending on completeness). Needs dedicated 10-min fire. |
-| **E2b** | E2 quant gap fix — GPTQ calibration on val tokens (TTT preservation) | **running (GPTQ)** | 2.91941 post-EMA / **1.42457 post-TTT** / — quant | 1588 | `/tmp/paramgolf_bootstrap.log` | Training + TTT complete. **Post-TTT val_bpb 1.42457** (E2: 1.42528 — matches ✓). **🔥 GPTQ_CALIB_USE_VAL=1 log line confirmed** — Hessians collected from val tokens (67 in 18.2s, same count as E2). Now in gptq_mixed_quantize CPU phase. Moment of truth comes in 3-5 min when quant val_bpb lands. ETA ~1014Z. |
+**Mission recalibrated**: user reminded us the goal is SPEED. Original 5-experiment plan was too short. Expanded to E1-E12 with a focus on big-hitter training throughput wins, all runnable on 3090 in fast-screen mode (TTT=0, 120s wallclock, ~4 min per run). The E2 quant-gap-when-TTT bug is parked — not on critical path; a submission built on E1 stack (TTT=0) is already shippable.
+
+| exp | shot | description | LOC | expect | status | ms/step | notes |
+|---|---|---|---|---|---|---|---|
+| **E1** | — | Baseline (no compile, TTT=0) | — | 1.0× | ✅ done | 2933 | Shot 0e quant gap 0.022 ✅, artifact 11.1 MB |
+| **E2** | S1 | torch.compile on (+ layer_loop + prefetch) | — | +25-35% | ✅ done | **1581 (1.85×)** | post-TTT val_bpb 1.425 matches H100 reference |
+| **E3** | S17 | fuzzy LR bandit | 21 | ??? | ❌ done (SKIP) | 1592 | lost A/B vs E2 (+0.07 train_loss at step 30) |
+| **E2b** | — | GPTQ val-calib for TTT quant gap fix | 26 | bug fix | ❌ done (FAIL) | 1588 | gap only moved 0.014 BPB (1.866→1.852), hypothesis rejected |
+| **E4** | NEW | `torch.compile(mode='max-autotune')` | 1 | +5-15% | **pending** | | 1-line flip, biggest free win on 3090 |
+| **E5** | NEW | `cudnn.benchmark=True` + TF32 matmul precision + inductor flags | 5 | +3-8% | pending | | Ampere-tuned inductor switches |
+| **E6** | S10 | Parameter Banking + Parallel Muon (batch NS across shape-matched params) | 150 | +10-20% | pending_wip | | big coding effort |
+| **E7** | S4 | Fused n-gram bias Triton kernel (~200 kernel launches/step currently) | 150 | +5-10% | pending | | Triton works on 3090 |
+| **E8** | NEW | Disable layer_loop A/B (3-layer recurrence costs ~20% at step ≥41) | 1 | +15-20% | pending | | env var: LOOP_START=100, accept quality hit as speed A/B |
+| **E9** | S12 | Multi-shard loader + dedicated copy stream | 100 | +2-5% | pending | | incremental prefetch win |
+| **E10** | S3 | Persistent CUDAGraph capture | 200 | +10-20% | pending | | reduces kernel launch overhead |
+| — | S9, S2 | FA3 varlen / FA3 sourcing | — | +30-50% | **blocked** | | Hopper-only, can't test on 3090 |
+| — | S0b, S13, S14 | Eval-only speedups (streaming KV, Triton KV eval, fused softcap+CE megakernel) | — | +eval 5-15× | **deferred** | | sliding eval disabled in fast-screen, revisit for submission |
+
+**Running order** (smallest to biggest LOC, fail-fast): **E4 → E5 → E8 → E7 → E6 → E10 → E9**. E4, E5, E8 are sub-5-LOC one-line env flips — we can test all 3 in the time one proper implementation takes.
+
+**Target**: composing survivors on top of E2's 1.85× → realistic stretch **2.5-3.5× vs E1 baseline**.
 
 ## Fire log
 

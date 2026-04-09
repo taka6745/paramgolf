@@ -776,7 +776,15 @@ def train_model(h,device,val_data):
 	if getattr(base_model,'_nlfi_enabled',False) and not getattr(base_model,'_nlfi_applied',False):
 		_sample=val_data.val_tokens[:h.eval_seq_len].to(device=device,dtype=torch.int64).view(1,-1)
 		base_model._apply_nlfi_once(_sample)
-	compiled_model=torch.compile(base_model,dynamic=False,fullgraph=True)
+	# E4/SPEED: torch.compile mode selectable via env. 'max-autotune' does more
+	# kernel autotuning up-front (longer first-compile cost, faster steady-state
+	# steps). Cache is persistent so first-compile cost is paid once.
+	_compile_mode=os.environ.get('TORCH_COMPILE_MODE','default')
+	if _compile_mode=='default':
+		compiled_model=torch.compile(base_model,dynamic=False,fullgraph=True)
+	else:
+		log(f"torch.compile mode={_compile_mode}")
+		compiled_model=torch.compile(base_model,dynamic=False,fullgraph=True,mode=_compile_mode)
 	if h.distributed:model=DDP(compiled_model,device_ids=[h.local_rank],broadcast_buffers=False)
 	else:model=compiled_model
 	log(f"model_params:{sum(p.numel()for p in base_model.parameters())}");optimizers=Optimizers(h,base_model);train_loader=ShuffledSequenceLoader(h,device);max_wallclock_ms=1e3*h.max_wallclock_seconds if h.max_wallclock_seconds>0 else None
