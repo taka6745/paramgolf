@@ -141,6 +141,16 @@ NGRAM_BACKOFF_THRESH4="${NGRAM_BACKOFF_THRESH4:-1.0}"
 NGRAM_BACKOFF_THRESH3="${NGRAM_BACKOFF_THRESH3:-1.0}"
 NGRAM_BACKOFF_ALPHA="${NGRAM_BACKOFF_ALPHA:-0.4}"
 
+# NGR_LOG_FREQ_INV (NIGHT_MODE world-novel L09): one-time inverse-log-frequency
+# bucket suppression. Mutes high-freq n-gram buckets so the bias has more capacity
+# for rare contexts where the model is uncertain.
+USE_NGR_LOG_FREQ_INV="${USE_NGR_LOG_FREQ_INV:-1}"
+
+# CTX_PARTITIONED_TAB (NIGHT_MODE world-novel L09): 16 virtual sub-tables via
+# slice rotation, finer-grained n-gram smoothing.
+USE_CTX_PARTITIONED_TAB="${USE_CTX_PARTITIONED_TAB:-1}"
+CTX_PARTITION_SLICES="${CTX_PARTITION_SLICES:-16}"
+
 # === DRY_RUN mode for fast smoke testing (60s wallclock, no TTT, no real eval) ===
 if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "[run] DRY_RUN=1 — 60s smoke test"
@@ -164,6 +174,7 @@ echo "  PREQUANT_TTT_ENABLED=$PREQUANT_TTT_ENABLED epochs=$PREQUANT_TTT_EPOCHS l
 echo "  USE_NORM_PCT_DROPOUT=$USE_NORM_PCT_DROPOUT thresh=$NORM_PCT_THRESH  (NIGHT_MODE world-novel L05)"
 echo "  USE_CMP_QUANT_VALUE_DEDUP=$USE_CMP_QUANT_VALUE_DEDUP step=$CMP_QUANT_DEDUP_STEP  (NIGHT_MODE world-novel L10, helps 16MB)"
 echo "  USE_NGRAM_BIAS=$USE_NGRAM_BIAS USE_NGRAM_BACKOFF=$USE_NGRAM_BACKOFF buckets=$NGRAM_HASH_BUCKETS  (NIGHT_MODE n=3 confirmed)"
+echo "  USE_NGR_LOG_FREQ_INV=$USE_NGR_LOG_FREQ_INV USE_CTX_PARTITIONED_TAB=$USE_CTX_PARTITIONED_TAB slices=$CTX_PARTITION_SLICES  (world-novel L09)"
 
 LOG="logs/run_seed${SEED}_$(date -u +%Y%m%dT%H%M%SZ).log"
 
@@ -204,6 +215,9 @@ NGRAM_W_FOURGRAM="$NGRAM_W_FOURGRAM" \
 NGRAM_BACKOFF_THRESH4="$NGRAM_BACKOFF_THRESH4" \
 NGRAM_BACKOFF_THRESH3="$NGRAM_BACKOFF_THRESH3" \
 NGRAM_BACKOFF_ALPHA="$NGRAM_BACKOFF_ALPHA" \
+USE_NGR_LOG_FREQ_INV="$USE_NGR_LOG_FREQ_INV" \
+USE_CTX_PARTITIONED_TAB="$USE_CTX_PARTITIONED_TAB" \
+CTX_PARTITION_SLICES="$CTX_PARTITION_SLICES" \
 python3 -u submission/train.py 2>&1 | tee "$LOG"
 
 echo

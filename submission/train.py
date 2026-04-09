@@ -197,6 +197,19 @@ class GPT(nn.Module):
 		self._ngram_backoff_t4=float(os.environ.get('NGRAM_BACKOFF_THRESH4','1.0'))
 		self._ngram_backoff_t3=float(os.environ.get('NGRAM_BACKOFF_THRESH3','1.0'))
 		self._ngram_backoff_alpha=float(os.environ.get('NGRAM_BACKOFF_ALPHA','0.4'))
+		# NGR_LOG_FREQ_INV (NIGHT_MODE world-novel L09): one-time inverse-log-frequency
+		# bucket suppression on first forward. High-freq buckets get muted; rare buckets
+		# stay strong. Mutates n-gram tables in place ONCE; subsequent forwards are no-op.
+		# Targets the trigram bias swamping problem: model already predicts confident
+		# common contexts well, so muting the bias there frees capacity for rare contexts.
+		self._nlfi_enabled=bool(int(os.environ.get('USE_NGR_LOG_FREQ_INV','0')))
+		self._nlfi_done=False
+		# CTX_PARTITIONED_TAB (NIGHT_MODE world-novel L09): 16 virtual sub-tables via
+		# slice rotation by (current_id mod S) * (HASH/S). Effectively partitions hash
+		# buckets into S zones, each absorbing 1/S of contexts → finer-grained smoothing.
+		# Mini-paper extension of the tabulation hash framework.
+		self._ctx_part_tab_enabled=bool(int(os.environ.get('USE_CTX_PARTITIONED_TAB','0')))
+		self._ctx_part_slices=int(os.environ.get('CTX_PARTITION_SLICES','16'))
 		self.register_buffer('_bigram_tab',torch.zeros(1,dtype=torch.float32),persistent=False)
 		self.register_buffer('_trigram_tab',torch.zeros(1,dtype=torch.float32),persistent=False)
 		self.register_buffer('_fourgram_tab',torch.zeros(1,dtype=torch.float32),persistent=False)
@@ -258,7 +271,38 @@ class GPT(nn.Module):
 			_prev2=torch.cat([_zeros1,input_ids[:,:-1]],dim=1).reshape(-1).long()
 			_prev3=torch.cat([_zeros2,input_ids[:,:-2]],dim=1).reshape(-1).long()
 			H=self._ngram_hash
+			# NGR_LOG_FREQ_INV: one-time inverse-log-frequency bucket mutation
+			if self._nlfi_enabled and not self._nlfi_done:
+				try:
+					_bg_h_init=(_ids_flat*36313)%H
+					_bg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+					_bg_counts.scatter_add_(0,_bg_h_init,torch.ones_like(_bg_h_init,dtype=torch.float32))
+					_bg_mult=1.0/torch.log(2.0+_bg_counts)
+					if self._bigram_tab.dim()==2:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype).unsqueeze(1))
+					else:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype))
+					if self._trigram_tab.numel()>1:
+						_tg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1))%H
+						_tg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+						_tg_counts.scatter_add_(0,_tg_h_init,torch.ones_like(_tg_h_init,dtype=torch.float32))
+						_tg_mult=1.0/torch.log(2.0+_tg_counts)
+						if self._trigram_tab.dim()==2:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype).unsqueeze(1))
+						else:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype))
+					if self._fourgram_tab.numel()>1:
+						_fg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1)^((_ids_flat*41077)>>2))%H
+						_fg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+						_fg_counts.scatter_add_(0,_fg_h_init,torch.ones_like(_fg_h_init,dtype=torch.float32))
+						_fg_mult=1.0/torch.log(2.0+_fg_counts)
+						if self._fourgram_tab.dim()==2:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype).unsqueeze(1))
+						else:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype))
+					print('NGR_LOG_FREQ_INV: mutated n-gram tables by inverse-log-freq multiplier (one-time)',flush=True)
+				except Exception as _e:print(f'NGR_LOG_FREQ_INV: mutation failed ({_e})',flush=True)
+				self._nlfi_done=True
 			_h_bi=(_ids_flat*36313)%H
+			# CTX_PARTITIONED_TAB: rotate bigram hash by per-token slice for finer smoothing
+			if self._ctx_part_tab_enabled:
+				_S_slices=self._ctx_part_slices
+				_zone=(_ids_flat%_S_slices)*(H//_S_slices)
+				_h_bi=(_h_bi+_zone)%H
 			_h_tri=(_prev2*36313+_ids_flat*27191)%H
 			_h_four=(_prev3*36313+_prev2*27191+_ids_flat*51497)%H
 			_bi=self._bigram_tab[_h_bi].reshape(B,S,-1)
