@@ -41,6 +41,97 @@ Each row: shot id, hardware, wallclock, steps achieved, ms/step, val_bpb, artifa
 | **E27_layers4 (NUM_LAYERS=4)** | 1×RTX 3090 24GB | ~2 min | — | — | — | — | — | — | ❌ **FAILED** — LOOP_START=3 LOOP_END=5 range (from run.sh defaults) is incompatible with 4 blocks. Expected failure. Would need to override LOOP_END or disable looping. | 20260409T1759Z |
 | **E28_dim384 (NUM_LAYERS=6 + MLP_MULT=2 + MODEL_DIM=384)** | 1×RTX 3090 24GB | 108.5s train + ~7 min wallclock | **191 train** (wallclock cap) | **568 ms/step** (+13% vs E26) | ~9M params? (not measured), ~346K tok/s | **pre-quant 2.60109 ⭐⭐⭐** / quant **3.39795** (gap 0.80 ⚠️) | tbd | **🤯 5.16× vs E1** | 🤯 **Speed record: 5.16×.** Cutting model_dim 512 → 384 (25% smaller hidden) on top of layers=6+mlp=2 base. **Pre-quant val_bpb 2.601** (massive improvement — smaller model overfits less in undertrained regime). **BUT quant gap is 0.80** (worst quant of all experiments) — tiny model hurts int6 proportionally more. Speed champion, NOT submission champion. | 20260409T1815Z |
 | **E29_dim256 (NUM_LAYERS=6 + MLP_MULT=2 + MODEL_DIM=256)** | 1×RTX 3090 24GB | 108.0s train + ~7 min wallclock | **315 train** (wallclock cap) | **343 ms/step** (+40% vs E28) | ~5M params?, 573K tok/s effective | **pre-quant 2.08160 ⭐⭐⭐⭐** / quant **3.63663** (gap 1.55 ⚠️⚠️) | tbd | **🤯🤯🤯 8.55× vs E1** | 🤯🤯 **PEAK SPEED: 8.55×.** model_dim=256 (half of 512), 5M params. **315 training steps in 108s (8.5× E1's 37).** Pre-quant val_bpb **2.082** — lower than even H100 comp anchors (1.07 is reference). But quant gap 1.55 — int6 can't preserve the information density. Proves the compute-bound hypothesis to an extreme: smaller model + more steps = better pre-quant, but quant is the real submission floor. | 20260409T1841Z |
+| **E30_dim384seq (E28 + TRAIN_SEQ_LEN=1024)** | 1×RTX 3090 24GB | 108.1s train + ~7 min wallclock | **211 train** (wallclock cap) | **512 ms/step** (+10% vs E28) | 9.37M params | pre-quant **2.53502** / quant **3.56881** (gap 1.03) | tbd | **5.73× vs E1** | ⚠️ Seq cut adds +10% speed but hurts quality more than expected (2.535 vs E28's 2.601). | 20260409T1854Z |
+| **E31_layers4** | 1×RTX 3090 24GB | ~1.5 min | — | — | — | — | — | — | ❌ FAILED (another config issue beyond LOOP range). Not debugged. | 20260409T1855Z |
+
+---
+
+## FINAL SUMMARY — Phase 2 Speed Exploration (E1-E31)
+
+### 🏆 PODIUMS
+
+**Speed champions (vs E1 baseline 2933 ms/step):**
+| rank | exp | ms/step | speedup | pre-quant bpb | quant bpb | params |
+|---|---|---|---|---|---|---|
+| 🥇 | E29 dim=256 | **343** | **8.55×** | 2.082 ⭐ | 3.637 | ~5M |
+| 🥈 | E30 dim=384+seq1024 | 512 | 5.73× | 2.535 | 3.569 | 9.4M |
+| 🥉 | E28 dim=384 | 568 | 5.16× | 2.601 | 3.398 | ~9M |
+| 4 | E26 nuke (l6+m2+seq1024) | 643 | 4.56× | 2.922 | 3.186 | ~15M |
+| 5 | E25 wide (l6+m3+seq1024) | 713 | 4.11× | 2.995 | 3.258 | ~18M |
+| 6 | E24 extreme (l6+m2) | 725 | 4.05× | 2.971 | 3.131 | 15.2M |
+| 7 | E21 layers6 | 856 | 3.43× | 2.954 | 3.154 | ~21M |
+
+**Submission-grade champions (by QUANTIZED val_bpb, TTT=0):**
+| rank | exp | quant bpb | ms/step | speedup |
+|---|---|---|---|---|
+| 🥇 | **E14 (l11+mlp=2)** | **3.027** | 1141 | 2.57× |
+| 🥈 | E5 (E4b+cudnn.benchmark) | 3.019 | 1514 | 1.94× |
+| 🥉 | E11 (E6+bf16 n-grams) | 3.039 | 1370 | 2.14× |
+| 4 | E6 (parallel Muon) | 3.036 | 1369 | 2.14× |
+
+### KEY INSIGHTS
+
+1. **3090 is COMPUTE-BOUND.** Bigger batches (E8d, E12_stack), bf16 n-grams (E11), coord descent tuning (E8c) are all washes. Only cutting compute OR fusing kernels gives speedups.
+
+2. **Smaller model wins at our 108s budget.** More training steps → better pre-quant. But int6 quant gap scales inversely with model size — smaller models lose more to quantization.
+
+3. **Speed champion ≠ submission champion.** E29 is 8.55× faster with pre-quant 2.082, but quant 3.637 makes it WORSE for submission than E14 at 2.57× with quant 3.027.
+
+4. **Config winners (all stack on top of each other):**
+   - `torch.compile(mode='max-autotune-no-cudagraphs')` (E4b: +3.7%)
+   - `torch.backends.cudnn.benchmark=True` (E5: +0.8%)
+   - `NUM_LOOPS=1` (E8: +6.9%)
+   - `USE_PARALLEL_MUON=1` (E6: +3%)
+
+5. **Config losers (skip):**
+   - `TRAIN_BATCH_TOKENS` bigger than default (E8d/E12: wash)
+   - `USE_NGRAM_BF16=1` (E11: speed neutral, only memory win)
+   - `TORCHINDUCTOR_COORDINATE_DESCENT_TUNING=1` (E8c: 0% speed, +11 min compile cost)
+   - `USE_FUZZY_LR_BANDIT=1` (E3: LOST A/B at matched steps)
+   - `torch.compile(mode='max-autotune')` (E4/E10b: CUDA graphs crash our rotary caching)
+   - Extreme NUM_LAYERS=4 (crashes on loop config)
+
+### RECOMMENDED SUBMISSION CONFIG (for real submission)
+
+**Base (always on):**
+```
+TORCH_COMPILE_MODE=max-autotune-no-cudagraphs
+USE_CUDNN_BENCHMARK=1
+NUM_LOOPS=1
+USE_PARALLEL_MUON=1
+```
+
+**For maximum quality** (full 11 layers, enable TTT if quant gap fixed):
+```
+NUM_LAYERS=11 (default)
+MLP_MULT=2  (E14 — best quant)
+```
+Expected: ~1141 ms/step, quant val_bpb ~3.03 (with TTT fixed: ~1.4)
+
+**For maximum speed with acceptable quality** (sweet spot):
+```
+NUM_LAYERS=6
+MLP_MULT=2
+TRAIN_SEQ_LEN=1024
+EVAL_SEQ_LEN=1024
+```
+Expected: ~643 ms/step (E26), pre-quant 2.92, quant 3.19
+
+**For pure speed record** (research-only, quant too broken for submission):
+```
+NUM_LAYERS=6
+MLP_MULT=2  
+MODEL_DIM=256
+EMBEDDING_DIM=256
+```
+Expected: ~343 ms/step (E29), pre-quant 2.08, quant 3.64
+
+### REMAINING WORK (not tackled, budget)
+
+- **TTT+quant gap bug** (E2b fix attempt failed): still blocks full-fat submission. Root cause undiagnosed.
+- **Explicit CUDA graphs**: E10b (max-autotune auto-cudagraphs) crashed; manual capture requires training loop refactor.
+- **Fused Triton n-gram kernel**: E7a showed +2% from skipping tri/four, so fused could give similar gains for similar LOC investment.
+- **Champion full-fat run** (600s + TTT on): never launched due to TTT quant bug.
 
 ---
 
