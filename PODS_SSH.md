@@ -1,6 +1,26 @@
-# PODS_SSH.md — RunPod test fleet (2026-04-09, post-Phase-1)
+# PODS_SSH.md — RunPod test fleet (2026-04-09, dry run on differentiated stack)
 
-**0 pods alive.** Pod K (`9lfji49c6ngy9a`) was removed 2026-04-09 ~01:15Z after Phase 1 R1 completed (in-training val_bpb=1.7059, quantized=3.3166 — undertrained EMA, expected). Total Phase 1 burn: ~$4. Next spin-up will use the `submission/bootstrap.sh` runbook.
+**1 pod alive.** Pod L (`55fzwdfhbg9n4u`) spun up 2026-04-09 01:53Z for the dry run of the 10-patch differentiated submission stack via `submission/bootstrap.sh`. Pod K removed earlier, see history below.
+
+## Pod L — paramgolf-dryrun-h100 (NVIDIA H100 SXM 80GB HBM3) — DRY RUN ACTIVE
+
+- **ID**: `55fzwdfhbg9n4u`
+- **User hash**: `64411fec`
+- **GPU**: 1 × NVIDIA H100 SXM 80GB HBM3 (HBM3 = higher memory bandwidth than PCIe)
+- **Cost**: $2.99/h (secure cloud — H100 PCIe was sold out)
+- **Driver**: 580.126.09
+- **SSH proxy**: `ssh 55fzwdfhbg9n4u-64411fec@ssh.runpod.io -i ~/.ssh/id_ed25519`
+- **Image**: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04` (will upgrade torch to 2.9.1+cu128 in setup.sh)
+- **Disk**: 100 GB container + 50 GB volume @ /workspace
+- **Cluster**: us-ne-1.runpod.net (different from previous us-ks-2 cluster)
+- **Spin-up**: 2026-04-09 01:53Z
+- **Bootstrap**: launched via `curl -sL https://raw.githubusercontent.com/taka6745/paramgolf/main/submission/bootstrap.sh | bash`
+- **Bootstrap log**: `/tmp/paramgolf_bootstrap.log`
+- **Expected ETA**: ~60-90 min total (5 setup + 30-60 tokenize + 3 ngram + 10-15 train + 5-10 eval)
+
+---
+
+## History — Pod K removed 2026-04-09 0115Z
 
 ## Pod K — paramgolf-phase1-h100 (REMOVED 2026-04-09 0115Z)
 
