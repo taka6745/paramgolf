@@ -23,8 +23,8 @@
 | **E8** | NEW | E5 + `NUM_LOOPS=1` | 0 | +15-20% | ✅ **done** | **1410** (+6.9% vs E5, **🎯 2.08× vs E1**) | 77 steps. Quality intact (2.928 pre-quant). Clean 2× crossed. |
 | **E8c** | NEW | E8 + `TORCHINDUCTOR_COORDINATE_DESCENT_TUNING=1` | 0 | +3-10% | ✅ **done (neutral)** | **1408.9** (~0% vs E8) | speed neutral BUT peak VRAM 10.9 GB (vs E8's 12.7 GB, **-14%**). Free memory headroom enables bigger batch. |
 | **E8d** | NEW | E8c + `TRAIN_BATCH_TOKENS=262144` (to use freed VRAM) | 0 | +15-25% effective | **queued** | | will auto-launch when E8c exits. **Note**: E8c is taking ~18 min (vs 7 min normal) because coord_descent tuning recompiles for eval_model too. E8d will be similarly slow. Consider dropping coord_descent if OOM is not an issue. |
-| **E6** | S10 | Parameter Banking + Parallel Muon (batch NS across shape-matched params) | 150 | +10-20% | pending_wip | | big coding effort |
-| **E7** | S4 | Fused n-gram bias Triton kernel (~200 kernel launches/step currently) | 150 | +5-10% | pending | | Triton works on 3090 |
+| **E6** | S10 | Parameter Banking + Parallel Muon | ~90 | +5-15% | ✅ **coded** `ca545ed`, **queued** | | auto-launches after E8d. `USE_PARALLEL_MUON=1` groups params by shape, batches Newton-Schulz across them. Falls back to serial path if env var off. |
+| **E7** | S4 | Fused n-gram bias Triton kernel | 150 | +5-10% | pending | | write a Triton kernel that does all 3 n-gram gathers + weighted add in one pass |
 | **E9** | S12 | Multi-shard loader + dedicated copy stream | 100 | +2-5% | pending | | incremental prefetch win |
 | **E10** | S3 | Persistent CUDAGraph capture | 200 | +10-20% | pending | | reduces kernel launch overhead |
 | — | S9, S2 | FA3 varlen / FA3 sourcing | — | +30-50% | **blocked** | | Hopper-only, can't test on 3090 |
