@@ -5,15 +5,17 @@
 **Per-fire budget**: 10 min
 **Total budget cap**: $5 / ~11 h wallclock on Pod M
 
+**Protocol (as of 0840Z)**: E1 and E2 are full-fat baseline runs (TTT on, quant eval, the works — ~27 min each). **E3-E5 run in fast-screen mode**: `PREQUANT_TTT_EPOCHS=0` + `MAX_WALLCLOCK_SECONDS=120`, saving ~26 min/run. Fast-screen is for rejecting broken/neutral patches via seed-matched A/B vs E2 baseline. Promising winners get promoted to a "champion stack" full-fat run at the end to measure final submission val_bpb.
+
 ## Experiments
 
 | exp | description | status | val_bpb (unquant / quant) | ms/step | log | notes |
 |---|---|---|---|---|---|---|
 | **E1** | Shot 0e validation: Phase 1 stack + fix, `bash run.sh` direct, no compile, TTT=0 | ✅ **done** | 3.03477 / **3.05683** | **2933** | `phase2/run_logs/e1_crash_0644Z.log` (initial crash) | **Shot 0e FIXED** — quant gap 0.02206 BPB (was -2.62). Artifact 11.1 MB ✅. 37 steps in 120s cap. |
 | E2 | Phase 2 Shot 1 (torch.compile on) via phase2/run.sh | **running (PreQ TTT 2/2)** | 2.92033 / — | **1581** | `/tmp/paramgolf_bootstrap.log` | retry @ 0752Z after NLFI refactor `055bafb`. **Train done**: 69 steps in 109s, ms/step **1581 (1.85× vs E1's 2933)**, tok/s **148K (vs E1's 80K)**. Pre-quant val_bpb 2.92033. Peak VRAM 12.7 GB. PreQ TTT: epoch 1/2 done in 769s loss 4.5184. Epoch 2 running @ 0826Z. ETA ~0842Z. |
-| E3 | Code + test Shot 17 (fuzzy LR bandit, ~80 LOC) | pending | | | | needs coding |
-| E4 | Code + test Shot 0b (streaming KV eval, ~250 LOC) | pending | | | | needs coding |
-| E5 | Code + test Shot 10 (Parameter Banking + Parallel Muon, ~200 LOC) | pending | | | | needs coding |
+| E3 | Code + test Shot 17 (fuzzy LR bandit, ~80 LOC) | pending | | | | needs coding. **Fast-screen mode**: `PREQUANT_TTT_EPOCHS=0`, `MAX_WALLCLOCK_SECONDS=120`. Goal: A/B train_loss vs E2 at step ≥50 |
+| E4 | Code + test Shot 0b (streaming KV eval, ~250 LOC) | pending | | | | needs coding. **Fast-screen mode**: eval-only shot — run new eval path on E1/E2 artifact, compare val_bpb to baseline eval |
+| E5 | Code + test Shot 10 (Parameter Banking + Parallel Muon, ~200 LOC) | pending | | | | needs coding. **Fast-screen mode**: `PREQUANT_TTT_EPOCHS=0`, `MAX_WALLCLOCK_SECONDS=120`. Goal: ms/step delta + peak VRAM delta |
 
 ## Fire log
 
