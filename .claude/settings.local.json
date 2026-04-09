@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(gh pr:*)",
+      "Bash(ls -lt logs/*.txt)",
+      "Bash(ls -lt logs/*mlx_model*)",
+      "Bash(ls -lt train_gpt_mlx_v*.py)"
+    ]
+  }
+}

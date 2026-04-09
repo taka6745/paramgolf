@@ -18,3 +18,15 @@ data/cpu_jobs/pending/
 data/cpu_jobs/in_progress/
 data/cpu_jobs/done/
 POD_HOSTS.env
+
+# Phase 1 cleanup (2026-04-09): never commit n-gram tables, embeddings, or
+# numerical data dumps. They blow past GitHub's 100 MB per-file limit and
+# blocked all our pushes. Regenerate from `data/build_*` scripts on the pod.
+data/*.npy
+data/*.npz
+data/*.bin
+data/*.pkl
+data/*.pt
+data/*.pth
+# Operational lockfiles + ephemeral state — never commit
+.claude/scheduled_tasks.lock

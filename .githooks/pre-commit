@@ -1,0 +1,47 @@
+#!/bin/bash
+# Repo pre-commit hook — refuse to commit any single file >50 MB.
+#
+# Why: GitHub's hard limit is 100 MB per file. On 2026-04-09 we discovered
+# 13 .npy files >100 MB had been committed in 96efff3 ("NIGHT_MODE TERMINATED
+# 2107Z"), which silently blocked every git push to origin/main. The only way
+# back was a destructive reset + force-push. Don't let it happen again.
+#
+# To enable on a fresh clone:
+#   git config core.hooksPath .githooks
+#
+# To bypass for a one-off (DO NOT do this for binary data files — add them to
+# .gitignore instead): git commit --no-verify (note: project rules forbid
+# --no-verify unless explicitly authorized by the user).
+
+set -e
+
+LIMIT_BYTES=$((50 * 1024 * 1024))  # 50 MB
+LIMIT_HUMAN="50 MB"
+
+# Find all files staged for commit (added or modified) and check their size
+# in the working tree (not the index — the working tree size is what matters
+# for the actual blob).
+TOO_BIG=""
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    [ ! -f "$f" ] && continue  # skip if not a regular file (deleted, symlink, dir)
+    size=$(stat -f '%z' "$f" 2>/dev/null || stat -c '%s' "$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$LIMIT_BYTES" ]; then
+        TOO_BIG="$TOO_BIG\n  $f ($(printf '%.1f' $(echo "$size / 1048576" | bc -l)) MB)"
+    fi
+done < <(git diff --cached --name-only --diff-filter=AM)
+
+if [ -n "$TOO_BIG" ]; then
+    printf "ERROR: pre-commit refusing to commit files >%s:%b\n" "$LIMIT_HUMAN" "$TOO_BIG" >&2
+    echo "" >&2
+    echo "GitHub's hard limit is 100 MB per file. Options:" >&2
+    echo "  - Add the file to .gitignore (preferred for data dumps)" >&2
+    echo "  - Use git LFS (https://git-lfs.github.com/)" >&2
+    echo "  - Split the file or store it externally" >&2
+    echo "" >&2
+    echo "If you understand the risk and need to bypass for a one-off, you" >&2
+    echo "MUST get explicit operator approval first (see CLAUDE.md)." >&2
+    exit 1
+fi
+
+exit 0
