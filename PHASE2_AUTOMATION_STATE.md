@@ -16,7 +16,7 @@
 | E3 | Code + test Shot 17 (fuzzy LR bandit) | ❌ **done (SKIP)** | 3.21635 / 2.95165 | 1592 | `/tmp/paramgolf_bootstrap.log` | Bandit LOSS at matched steps vs E2 (step 30 +0.073, 50 +0.027, 60 +0.032 worse). High-LR arm explosion at step 2. Code works, patch skipped in champion stack. |
 | E4 | Code + test Shot 0b (streaming KV eval, ~250 LOC) | **deferred** | | | | **Non-critical for fast-screen** (eval speedup only — affects sliding eval which is disabled). Too big for single fire (250 LOC). Revisit after E5 + quant-gap bug. |
 | E5 | Code + test Shot 10 (Parameter Banking + Parallel Muon, ~200 LOC) | **pending_wip** | | | | Muon.step refactor to batch NS across same-shape params (~40-200 LOC depending on completeness). Needs dedicated 10-min fire. |
-| **BUG** | E2 quant gap 1.866 BPB when TTT on (vs E1's 0.022 without TTT) | **investigate** | | | `phase2/run_logs/e2_0752Z.log` on pod | Submission blocker. Shot 0e fix works (logs confirm "restored multipliers from state_dict"). Possible cause: GPTQ calibrating on train data but post-TTT weights are val-adapted — distribution mismatch. Or: TTT modifies n-gram tables via gradients that don't survive int6 quantization. |
+| **E2b** | E2 quant gap fix — GPTQ calibration on val tokens (TTT preservation) | **running** | — / — | — | `/tmp/paramgolf_bootstrap.log` | fix committed `f6a25dd`: `_ValCalibLoader` + `GPTQ_CALIB_USE_VAL=1`. Hypothesis: train-Hessian GPTQ destroys TTT's val-adaptation because train activation stats don't cover val-specific weight dims. Same config as E2 but val calibration. Launched @ 0930Z, PID 3884967, ETA ~30 min. Also TTT_ENABLED=0 (skip sliding TTT eval → no OOM). |
 
 ## Fire log
 
