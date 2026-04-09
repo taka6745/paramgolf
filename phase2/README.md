@@ -53,18 +53,57 @@ Per `PHASE2_PLAN.md`:
 The actual val_bpb improvement follows directly from the step count: more
 training steps → lower train_loss → lower val_bpb → closer to the comp records.
 
-## Files (live when the respective shot lands)
+## Files shipped so far
 
-| file | purpose | shot |
+| file | status | purpose |
 |---|---|---|
-| `README.md` | this file | meta |
-| `bootstrap.sh` | Phase 2 single-command launcher | always |
-| `setup_phase2.sh` | extra Phase 2 pod setup on top of `submission/setup.sh` (FA3 wheel/source, cache dir creation) | S2 |
-| `run.sh` | Phase 2 version of `submission/run.sh` with compile enabled + warm-cache + new speed flags | S1+ |
-| `warm_compile_cache.py` | small helper that runs a short training pass to populate the inductor compile cache | S1 |
-| `kernels/.gitkeep` | placeholder for S4+ Triton kernels | S4 |
-| `kernels/ngram_bias_kernel.py` | fused n-gram bias gather + bias-add (S4) | S4 |
-| `kernels/gptq_dequant_matmul.py` | fused int6 dequant + matmul for eval path (S5) | S5 |
+| `README.md` | ✅ | this file |
+| `bootstrap.sh` | ✅ | Phase 2 single-command launcher (chains submission/ + phase2/) |
+| `metrics.py` | ✅ | Structured JSONL telemetry helper for per-step timing + GPU/CPU/RAM |
+| `warm_compile_cache.py` | ✅ | Shot 1: runs short training pass to populate inductor cache |
+| `run.sh` | ✅ | Shot 1: Phase 2 run with torch.compile enabled |
+| `kernels/.gitkeep` | ✅ | placeholder dir for future Triton kernels |
+| `setup_phase2.sh` | ⏳ not yet | S2: FA3 wheel install or source build |
+| `kernels/ngram_bias_kernel.py` | ⏳ not yet | S4: fused n-gram bias gather + bias-add |
+| `kernels/gptq_dequant_matmul.py` | ⏳ not yet | S5: fused int6 dequant + matmul for eval |
+
+## Tier 0 speed levers shipped in submission/ (in-place edits, env-var gated)
+
+These edits land in `submission/` directly because they're small enough to be
+gated by env vars without duplicating code:
+
+| Shot | File | Env var | Status |
+|---|---|---|---|
+| Free Inductor patch | `submission/run.sh` | `TORCHINDUCTOR_MIX_ORDER_REDUCTION=0` | ✅ default on |
+| CUDA allocator expandable segments | `submission/run.sh` | `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` | ✅ default on |
+| CPU data prefetch thread + pinned RAM | `submission/train.py` ShuffledSequenceLoader | `USE_PREFETCH_LOADER=1 PREFETCH_DEPTH=8` | ✅ default on |
+| Prefetch prefill during pretime | `submission/train.py` ShuffledSequenceLoader.prefill() | `PREFETCH_PREFILL_BATCHES=8` | ✅ default on |
+
+These are active on **both** the Phase 1 `submission/bootstrap.sh` path AND
+the Phase 2 `phase2/bootstrap.sh` path. Phase 2 additionally enables torch.compile
+(which Phase 1 has disabled to avoid the 5+ min cold-start penalty).
+
+## Shots NOT YET shipped (future work)
+
+See `PHASE2_PLAN.md` and `PHASE2_RESEARCH.md` for the full roadmap. High-priority
+items still pending:
+
+- **Shot 2 (FA3 sourcing)** — not on PyPI; build from source or find a private wheel
+- **Shot 9 (FA3 varlen + window attention + mixed seq_len)** — PR #1212 pattern, the comp's fastest record at 69.6 ms/step
+- **Shot 10 (Parameter Banking + Parallel Muon)** — PR #399's 15× optimizer speedup
+- **Shot 14 (Training megakernel)** — world-first opportunity, 5-7 days dev
+- **Shot 0b (Batched + streaming KV sliding eval)** — world-novel, 5-15× eval speedup
+- **Shot 17 (Fuzzy LR bandit per microbatch)** — user's "dial-in" hint
+- **Shot 19 (GPU-resident successive halving)** — user's "GPU tests" hint
+
+## Decisions that diverged from the research agent's suggestions
+
+1. **grad_accum 8 → 1 SKIPPED**: research agent claimed 30-50% free win but didn't check activation memory. Our 56 GB peak at microbatch=48 seqs would become 448 GB at microbatch=384 seqs — blows H100 80GB 8×. Keeping grad_accum=8.
+
+2. **CPU n-gram precompute thread SKIPPED**: research agent claimed ~5-10% speedup from moving bigram/trigram/fourgram hash+gather to CPU. Math shows it's actually 48× SLOWER because GPU HBM bandwidth (3 TB/s) makes gather ops near-free, while CPU hits both a 100 GB/s memory wall AND a 50 GB/s PCIe Gen5 transfer wall. Pivoted to prefetch prefill during pretime instead.
+
+Both skips documented in commit messages and in the relevant code files so
+future-me doesn't re-fall for the same bad advice.
 
 ## Dependencies
 
