@@ -10,7 +10,7 @@
 | exp | description | status | val_bpb (unquant / quant) | ms/step | log | notes |
 |---|---|---|---|---|---|---|
 | **E1** | Shot 0e validation: Phase 1 stack + fix, `bash run.sh` direct, no compile, TTT=0 | ✅ **done** | 3.03477 / **3.05683** | **2933** | `phase2/run_logs/e1_crash_0644Z.log` (initial crash) | **Shot 0e FIXED** — quant gap 0.02206 BPB (was -2.62). Artifact 11.1 MB ✅. 37 steps in 120s cap. |
-| E2 | Phase 2 Shot 1 (torch.compile on) via phase2/run.sh | **running** | — / — | — | `/tmp/paramgolf_bootstrap.log` | launched 0713Z. warm_compile_cache.py PID 3854178 → phase2/run.sh. TTT=2 epochs (auto batch_seqs=8). Expected done ~0734Z |
+| E2 | Phase 2 Shot 1 (torch.compile on) via phase2/run.sh | **running (retry)** | — / — | — | `/tmp/paramgolf_bootstrap.log` | initial 0713Z crashed @ 0714Z on `.item()` graph break (torch.compile fullgraph=True). **REFACTOR LANDED** `055bafb`: extracted NLFI setup into `GPT._apply_nlfi_once()` called eagerly before compile. **RETRY** @ 0752Z. NLFI setup confirmed firing in log (line 318). warm_compile_cache also OOM'd (separate issue — phase2/run.sh went anyway). Cold compile cache means ms/step will be skewed but val_bpb path clean. PID 3856713 |
 | E3 | Code + test Shot 17 (fuzzy LR bandit, ~80 LOC) | pending | | | | needs coding |
 | E4 | Code + test Shot 0b (streaming KV eval, ~250 LOC) | pending | | | | needs coding |
 | E5 | Code + test Shot 10 (Parameter Banking + Parallel Muon, ~200 LOC) | pending | | | | needs coding |
