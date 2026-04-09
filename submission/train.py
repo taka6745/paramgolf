@@ -222,13 +222,32 @@ class RMSNorm(nn.Module):
 class CastedLinear(nn.Linear):
 	def forward(self,x):w=self.weight.to(x.dtype);bias=self.bias.to(x.dtype)if self.bias is not None else None;return F.linear(x,w,bias)
 class Rotary(nn.Module):
-	def __init__(self,dim,base=1e4,train_seq_len=1024,rope_dims=0):super().__init__();self.dim=dim;self.base=base;self.train_seq_len=train_seq_len;self.rope_dims=rope_dims if rope_dims>0 else dim;inv_freq=1./base**(torch.arange(0,self.rope_dims,2,dtype=torch.float32)/self.rope_dims);self.register_buffer('inv_freq',inv_freq,persistent=False);self._seq_len_cached=0;self._cos_cached=None;self._sin_cached=None
+	def __init__(self,dim,base=1e4,train_seq_len=1024,rope_dims=0):
+		super().__init__();self.dim=dim;self.base=base;self.train_seq_len=train_seq_len;self.rope_dims=rope_dims if rope_dims>0 else dim
+		inv_freq=1./base**(torch.arange(0,self.rope_dims,2,dtype=torch.float32)/self.rope_dims)
+		self.register_buffer('inv_freq',inv_freq,persistent=False)
+		# E10: pre-compute cos/sin at train_seq_len as persistent=False buffers so
+		# forward() is a pure slice read (CUDA-graph safe). Old dynamic caching
+		# pattern triggered "accessing overwritten tensor" under max-autotune +
+		# CUDA graphs. Buffers are fp32; forward() casts to target dtype on each
+		# call (lightweight) — acceptable since x.dtype is constant during a run.
+		t=torch.arange(self.train_seq_len,dtype=torch.float32);freqs=torch.outer(t,inv_freq)
+		self.register_buffer('_cos_pre',freqs.cos()[None,:,None,:],persistent=False)
+		self.register_buffer('_sin_pre',freqs.sin()[None,:,None,:],persistent=False)
+		self._max_pre_seq_len=self.train_seq_len
+		# legacy attributes kept for backward compat (no longer written to)
+		self._seq_len_cached=0;self._cos_cached=None;self._sin_cached=None
 	def forward(self,seq_len,device,dtype):
-		if self._cos_cached is None or self._sin_cached is None or self._seq_len_cached!=seq_len or self._cos_cached.device!=device:
+		if seq_len<=self._max_pre_seq_len:
+			# E10 fast path: pure slice, no allocation, CUDA-graph safe
+			return self._cos_pre[:,:seq_len].to(dtype=dtype),self._sin_pre[:,:seq_len].to(dtype=dtype)
+		# Legacy fallback for seq_len > train_seq_len (base interpolation)
+		if self._cos_cached is None or self._seq_len_cached!=seq_len or self._cos_cached.device!=device:
 			rd=self.rope_dims
-			if seq_len>self.train_seq_len:scale=seq_len/self.train_seq_len;new_base=self.base*scale**(rd/(rd-2));inv_freq=1./new_base**(torch.arange(0,rd,2,dtype=torch.float32,device=device)/rd)
-			else:inv_freq=self.inv_freq.to(device)
-			t=torch.arange(seq_len,device=device,dtype=inv_freq.dtype);freqs=torch.outer(t,inv_freq);self._cos_cached=freqs.cos()[None,:,None,:];self._sin_cached=freqs.sin()[None,:,None,:];self._seq_len_cached=seq_len
+			scale=seq_len/self.train_seq_len;new_base=self.base*scale**(rd/(rd-2))
+			inv_freq=1./new_base**(torch.arange(0,rd,2,dtype=torch.float32,device=device)/rd)
+			t=torch.arange(seq_len,device=device,dtype=inv_freq.dtype);freqs=torch.outer(t,inv_freq)
+			self._cos_cached=freqs.cos()[None,:,None,:];self._sin_cached=freqs.sin()[None,:,None,:];self._seq_len_cached=seq_len
 		return self._cos_cached.to(dtype=dtype),self._sin_cached.to(dtype=dtype)
 def apply_rotary_emb(x,cos,sin,rope_dims=0):
 	if rope_dims>0 and rope_dims<x.size(-1):x_rope,x_pass=x[...,:rope_dims],x[...,rope_dims:];half=rope_dims//2;x1,x2=x_rope[...,:half],x_rope[...,half:];x_rope=torch.cat((x1*cos+x2*sin,x1*-sin+x2*cos),dim=-1);return torch.cat((x_rope,x_pass),dim=-1)
