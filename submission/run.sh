@@ -165,6 +165,17 @@ NGRAM_BACKOFF_THRESH4="${NGRAM_BACKOFF_THRESH4:-1.0}"
 NGRAM_BACKOFF_THRESH3="${NGRAM_BACKOFF_THRESH3:-1.0}"
 NGRAM_BACKOFF_ALPHA="${NGRAM_BACKOFF_ALPHA:-0.4}"
 
+# === Phase 2 Tier A: CPU data prefetch thread + pinned RAM ===
+# Background daemon thread builds batches while GPU runs forward/backward.
+# Queue depth 4 = up to 4 batches staged in pinned RAM ahead of the GPU.
+# Pinned memory enables async H2D via .to(device, non_blocking=True), so the
+# transfer overlaps with compute on the default stream.
+# Enable both in submission/run.sh so the Phase 1 submission/bootstrap also
+# gets the CPU/GPU parallelism for free.
+USE_PREFETCH_LOADER="${USE_PREFETCH_LOADER:-1}"
+PREFETCH_DEPTH="${PREFETCH_DEPTH:-4}"
+PREFETCH_PIN_MEMORY="${PREFETCH_PIN_MEMORY:-1}"
+
 # NGR_LOG_FREQ_INV (NIGHT_MODE world-novel L09): one-time inverse-log-frequency
 # bucket suppression. Mutes high-freq n-gram buckets so the bias has more capacity
 # for rare contexts where the model is uncertain.
@@ -199,6 +210,7 @@ echo "  USE_NORM_PCT_DROPOUT=$USE_NORM_PCT_DROPOUT thresh=$NORM_PCT_THRESH  (NIG
 echo "  USE_CMP_QUANT_VALUE_DEDUP=$USE_CMP_QUANT_VALUE_DEDUP step=$CMP_QUANT_DEDUP_STEP  (NIGHT_MODE world-novel L10, helps 16MB)"
 echo "  USE_NGRAM_BIAS=$USE_NGRAM_BIAS USE_NGRAM_BACKOFF=$USE_NGRAM_BACKOFF buckets=$NGRAM_HASH_BUCKETS  (NIGHT_MODE n=3 confirmed)"
 echo "  USE_NGR_LOG_FREQ_INV=$USE_NGR_LOG_FREQ_INV USE_CTX_PARTITIONED_TAB=$USE_CTX_PARTITIONED_TAB slices=$CTX_PARTITION_SLICES  (world-novel L09)"
+echo "  USE_PREFETCH_LOADER=$USE_PREFETCH_LOADER depth=$PREFETCH_DEPTH pinned=$PREFETCH_PIN_MEMORY  (Phase 2: CPU/GPU parallel data pipeline)"
 
 LOG="logs/run_seed${SEED}_$(date -u +%Y%m%dT%H%M%SZ).log"
 
@@ -242,6 +254,9 @@ NGRAM_BACKOFF_ALPHA="$NGRAM_BACKOFF_ALPHA" \
 USE_NGR_LOG_FREQ_INV="$USE_NGR_LOG_FREQ_INV" \
 USE_CTX_PARTITIONED_TAB="$USE_CTX_PARTITIONED_TAB" \
 CTX_PARTITION_SLICES="$CTX_PARTITION_SLICES" \
+USE_PREFETCH_LOADER="$USE_PREFETCH_LOADER" \
+PREFETCH_DEPTH="$PREFETCH_DEPTH" \
+PREFETCH_PIN_MEMORY="$PREFETCH_PIN_MEMORY" \
 python3 -u submission/train.py 2>&1 | tee "$LOG"
 
 echo

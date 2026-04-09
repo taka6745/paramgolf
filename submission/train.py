@@ -68,13 +68,103 @@ def _get_shard_memmap(file):
 	if mm is not None:return mm
 	n=_read_num_tokens(file);mm=np.memmap(file,mode='r',dtype='<u2',offset=_SHARD_HEADER_BYTES,shape=(n,));_MMAP_CACHE[key]=mm;return mm
 class ShuffledSequenceLoader:
+	"""Training data loader with optional background prefetch thread.
+
+	Set USE_PREFETCH_LOADER=1 to enable CPU-side prefetch: a daemon thread
+	builds batches into pinned-memory tensors ahead of the GPU, so the CPU
+	data loader runs IN PARALLEL with GPU forward/backward. Queue depth is
+	controlled by PREFETCH_DEPTH (default 4).
+
+	Without prefetch (default), behaves identically to the original
+	synchronous path: next_batch() builds the batch on the main thread then
+	ships to GPU via .to(non_blocking=True).
+
+	Thread safety: only the worker thread touches self.rng and self.start_inds
+	once prefetch is active. The main thread only pops from the queue and
+	does the H2D transfer. self.files / self.num_tokens are read-only after
+	__init__ so memmap access is safe across threads.
+	"""
 	def __init__(self,h,device):
 		self.world_size=h.world_size;self.seq_len=h.train_seq_len;self.device=device;all_files=[Path(p)for p in sorted(glob.glob(h.train_files))]
 		if not all_files:raise FileNotFoundError(f"No files found for pattern: {h.train_files}")
 		self.files=all_files[h.rank::h.world_size];self.rng=np.random.Generator(np.random.PCG64(h.rank));self.num_tokens=[_read_num_tokens(f)for f in self.files];self.start_inds=[[]for _ in self.files]
 		for si in range(len(self.files)):self._reset_shard(si)
+		# Phase 2 prefetch config (USE_PREFETCH_LOADER=1 spawns a daemon worker)
+		self._use_prefetch=bool(int(os.environ.get('USE_PREFETCH_LOADER','0')))
+		self._prefetch_depth=int(os.environ.get('PREFETCH_DEPTH','4'))
+		self._prefetch_queue=None
+		self._prefetch_thread=None
+		self._prefetch_args=None  # (global_tokens, grad_accum_steps) captured on first call
+		self._prefetch_use_pinned=bool(int(os.environ.get('PREFETCH_PIN_MEMORY','1')))
+		self._prefetch_stats={'batches_served':0,'queue_waits_empty':0,'queue_waits_full':0}
 	def _reset_shard(self,si):max_phase=min(self.seq_len-1,max(0,self.num_tokens[si]-self.seq_len-1));phase=int(self.rng.integers(max_phase+1))if max_phase>0 else 0;num_sequences=(self.num_tokens[si]-1-phase)//self.seq_len;sequence_order=self.rng.permutation(num_sequences);self.start_inds[si]=(phase+sequence_order*self.seq_len).tolist()
+	def _build_batch_cpu(self,global_tokens,grad_accum_steps):
+		"""Build one (x, y) batch on CPU. Returns pinned tensors if
+		PREFETCH_PIN_MEMORY=1 (default). Thread-safe for single-worker use."""
+		device_tokens=global_tokens//(self.world_size*grad_accum_steps)
+		device_batch_size=device_tokens//self.seq_len
+		remaining=np.array([len(s) for s in self.start_inds],dtype=np.float64)
+		if self._prefetch_use_pinned:
+			x=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64,pin_memory=True)
+			y=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64,pin_memory=True)
+		else:
+			x=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64)
+			y=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64)
+		for bi in range(device_batch_size):
+			total=remaining.sum()
+			if total<=0:
+				for si in range(len(self.files)):self._reset_shard(si)
+				remaining=np.array([len(s) for s in self.start_inds],dtype=np.float64)
+				total=remaining.sum()
+			probs=remaining/total
+			si=int(self.rng.choice(len(self.files),p=probs))
+			start_ind=self.start_inds[si].pop()
+			remaining[si]-=1
+			mm=_get_shard_memmap(self.files[si])
+			window=torch.as_tensor(np.array(mm[start_ind:start_ind+self.seq_len+1],dtype=np.int64))
+			x[bi]=window[:-1]
+			y[bi]=window[1:]
+		return x,y
+	def _prefetch_worker(self):
+		"""Background daemon thread: loops forever, pushing batches into the
+		queue. Any exception is surfaced to the main thread via a sentinel
+		tuple ('__ERROR__', exc)."""
+		try:
+			while True:
+				x,y=self._build_batch_cpu(*self._prefetch_args)
+				self._prefetch_queue.put((x,y))
+		except Exception as exc:
+			try:
+				self._prefetch_queue.put(('__ERROR__',exc))
+			except Exception:
+				pass
+	def _ensure_prefetch_started(self,global_tokens,grad_accum_steps):
+		if self._prefetch_queue is not None:
+			return
+		import queue as _queue
+		import threading as _threading
+		self._prefetch_queue=_queue.Queue(maxsize=self._prefetch_depth)
+		self._prefetch_args=(global_tokens,grad_accum_steps)
+		self._prefetch_thread=_threading.Thread(
+			target=self._prefetch_worker,
+			daemon=True,
+			name='ShuffledSequenceLoader-prefetch',
+		)
+		self._prefetch_thread.start()
+		print(f"[prefetch] daemon started: depth={self._prefetch_depth} pinned={self._prefetch_use_pinned}",flush=True)
 	def next_batch(self,global_tokens,grad_accum_steps):
+		if self._use_prefetch:
+			self._ensure_prefetch_started(global_tokens,grad_accum_steps)
+			# Detect queue-empty stalls for telemetry
+			if self._prefetch_queue.empty():
+				self._prefetch_stats['queue_waits_empty']+=1
+			item=self._prefetch_queue.get()
+			if isinstance(item,tuple) and len(item)>=1 and item[0]=='__ERROR__':
+				raise item[1]
+			x,y=item
+			self._prefetch_stats['batches_served']+=1
+			return x.to(self.device,non_blocking=True),y.to(self.device,non_blocking=True)
+		# Fallback: synchronous path (original behavior)
 		device_tokens=global_tokens//(self.world_size*grad_accum_steps);device_batch_size=device_tokens//self.seq_len;remaining=np.array([len(s)for s in self.start_inds],dtype=np.float64);x=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64);y=torch.empty((device_batch_size,self.seq_len),dtype=torch.int64)
 		for bi in range(device_batch_size):
 			total=remaining.sum()
@@ -83,6 +173,12 @@ class ShuffledSequenceLoader:
 				remaining=np.array([len(s)for s in self.start_inds],dtype=np.float64);total=remaining.sum()
 			probs=remaining/total;si=int(self.rng.choice(len(self.files),p=probs));start_ind=self.start_inds[si].pop();remaining[si]-=1;mm=_get_shard_memmap(self.files[si]);window=torch.as_tensor(np.array(mm[start_ind:start_ind+self.seq_len+1],dtype=np.int64));x[bi]=window[:-1];y[bi]=window[1:]
 		return x.to(self.device,non_blocking=True),y.to(self.device,non_blocking=True)
+	def prefetch_queue_depth(self):
+		"""Current depth of the prefetch queue (for telemetry). Returns -1 if
+		prefetch is disabled."""
+		if self._prefetch_queue is None:
+			return -1
+		return self._prefetch_queue.qsize()
 class RMSNorm(nn.Module):
 	def __init__(self,eps=None):super().__init__();self.eps=eps
 	def forward(self,x):return F.rms_norm(x,(x.size(-1),),eps=self.eps)
