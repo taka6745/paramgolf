@@ -366,11 +366,18 @@ class GPT(nn.Module):
 			# sufficient. Enable via USE_NGRAM_BF16=1.
 			_ngram_bf16=bool(int(os.environ.get('USE_NGRAM_BF16','0')))
 			_ngram_dtype=torch.bfloat16 if _ngram_bf16 else torch.float32
+			# E7a: optional bigram-only mode. Skips trigram + fourgram loads (and their
+			# forward-pass lookups via the existing numel() > 1 guards). Tests whether
+			# the 3-gram and 4-gram lookups are a bottleneck worth fusing.
+			_ngram_bigram_only=bool(int(os.environ.get('USE_NGRAM_BIGRAM_ONLY','0')))
 			for tab_attr,fname,label in [
 				('_bigram_tab',f'data/bigram_tab_{vs}v.npy','bigram'),
 				('_trigram_tab',f'data/trigram_logprobs_{vs}v.npy','trigram'),
 				('_fourgram_tab',f'data/fourgram_logprobs_{vs}v.npy','fourgram'),
 			]:
+				if _ngram_bigram_only and tab_attr!='_bigram_tab':
+					print(f'NGRAM_BIAS: {label} SKIPPED (USE_NGRAM_BIGRAM_ONLY=1)',flush=True)
+					continue
 				try:
 					_arr=np.load(fname)
 					_tab=torch.from_numpy(_arr).to(dtype=_ngram_dtype)
