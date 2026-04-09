@@ -1,0 +1,46 @@
+grep -E "NGR_LOG_FREQ|prequant_ttt|val_bpb|train_loss|stopping_early|OutOfMemory|Traceback|File \"/workspace" /tmp/paramgolf_e1_crash_0644Z.log
+grep -E "NGR_LOG_FREQ|prequant_ttt|val_bpb|train_loss|stopping_early|OutOfMemory|Traceback|File \"/workspace" /tmp/paramgolf_e1_crash_0644Z.log
+grep -E "NGR_LOG_FREQ|prequant_ttt|val_bpb|train_loss|stopping_early|OutOfMemory|Traceback|File \"/workspace" /tmp/paramgolf_e1_crash_0644Z.log
+[?2004l  USE_[01;31m[KNGR_LOG_FREQ[m[K_INV=1 USE_CTX_PARTITIONED_TAB=1 slices=16  (world-novel L09)
+  [01;31m[Kprequant_ttt[m[K_batch_seqs: 32
+  [01;31m[Kprequant_ttt[m[K_cosine_decay: True
+  [01;31m[Kprequant_ttt[m[K_enabled: True
+  [01;31m[Kprequant_ttt[m[K_epochs: 2
+  [01;31m[Kprequant_ttt[m[K_freeze_blocks: 1
+  [01;31m[Kprequant_ttt[m[K_grad_clip: 1.0
+  [01;31m[Kprequant_ttt[m[K_lr: 0.00045
+[01;31m[KNGR_LOG_FREQ[m[K_INV: computed + saved multipliers from current batch
+[01;31m[KNGR_LOG_FREQ[m[K_INV: applied mutation to n-gram tables (one-time per process)
+0/20000 val_loss: 8.8713 [01;31m[Kval_bpb[m[K: 3.4345
+1/20000 [01;31m[Ktrain_loss[m[K: 8.8689 train_time: 0.0m tok/s: 80322
+2/20000 [01;31m[Ktrain_loss[m[K: 12.6046 train_time: 0.1m tok/s: 80033
+3/20000 [01;31m[Ktrain_loss[m[K: 11.8381 train_time: 0.1m tok/s: 79898
+4/20000 [01;31m[Ktrain_loss[m[K: 10.2700 train_time: 0.2m tok/s: 79838
+5/20000 [01;31m[Ktrain_loss[m[K: 8.8287 train_time: 0.2m tok/s: 79800
+10/20000 [01;31m[Ktrain_loss[m[K: 7.1451 train_time: 0.4m tok/s: 79798
+20/20000 [01;31m[Ktrain_loss[m[K: 6.0175 train_time: 0.8m tok/s: 79788
+30/20000 [01;31m[Ktrain_loss[m[K: 5.6144 train_time: 1.4m tok/s: 70959
+37/20000 val_loss: 5.4776 [01;31m[Kval_bpb[m[K: 2.1207
+[01;31m[Kstopping_early[m[K: wallclock_cap train_time: 108613ms step: 37/20000
+pre-quantization post-ema val_loss:7.83861255 [01;31m[Kval_bpb[m[K:3.03472883 eval_time:233909ms
+[01;31m[Kprequant_ttt[m[K:params trainable=33099937 frozen=2889744
+[01;31m[KTraceback[m[K (most recent call last):
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 901, in <module>
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 899, in main
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 873, in train_and_eval
+    [01;31m[Kprequant_ttt[m[K_adapt_adamw(h,base_model,device,val_data.val_tokens,rank=h.rank,world_size=h.world_size)
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 843, in [01;31m[Kprequant_ttt[m[K_adapt_adamw
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 496, in forward
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 395, in forward_logits
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 292, in forward
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 263, in forward
+  [01;31m[KFile "/workspace[m[K/paramgolf/submission/train.py", line 223, in forward
+torch.[01;31m[KOutOfMemory[m[KError: CUDA out of memory. Tried to allocate 64.00 MiB. GPU 0 has a total capacity of 23.56 GiB of which 33.00 MiB is free. Process 2266372 has 23.52 GiB memory in use. Of the allocated memory 23.16 GiB is allocated by PyTorch, and 42.29 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[run] === [01;31m[Kval_bpb[m[K lines ===
+0/20000 val_loss: 8.8713 [01;31m[Kval_bpb[m[K: 3.4345
+37/20000 val_loss: 5.4776 [01;31m[Kval_bpb[m[K: 2.1207
+pre-quantization post-ema val_loss:7.83861255 [01;31m[Kval_bpb[m[K:3.03472883 eval_time:233909ms
+[run] === [01;31m[Kval_bpb[m[K lines ===
+0/20000 val_loss: 8.8713 [01;31m[Kval_bpb[m[K: 3.4345
+37/20000 val_loss: 5.4776 [01;31m[Kval_bpb[m[K: 2.1207
+pre-quantization post-ema val_loss:7.83861255 [01;31m[Kval_bpb[m[K:3.03472883 eval_time:233909ms
