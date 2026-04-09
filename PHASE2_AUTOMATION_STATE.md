@@ -22,7 +22,7 @@
 | **E5** | NEW | E4b + `cudnn.benchmark=True` | 1 | +1-5% | ✅ **done** | **1514** (+0.8% vs E4b, **1.94× vs E1**) | tiny incremental win |
 | **E8** | NEW | E5 + `NUM_LOOPS=1` | 0 | +15-20% | ✅ **done** | **1410** (+6.9% vs E5, **🎯 2.08× vs E1**) | 77 steps. Quality intact (2.928 pre-quant). Clean 2× crossed. |
 | **E8c** | NEW | E8 + `TORCHINDUCTOR_COORDINATE_DESCENT_TUNING=1` | 0 | +3-10% | ✅ **done (neutral)** | **1408.9** (~0% vs E8) | speed neutral BUT peak VRAM 10.9 GB (vs E8's 12.7 GB, **-14%**). Free memory headroom enables bigger batch. |
-| **E8d** | NEW | E8c + `TRAIN_BATCH_TOKENS=262144` (196608 × 1.33 to use freed VRAM) | 0 | +15-25% effective | **queued** | | will auto-launch when E8c exits. Expected: larger tokens/step, similar ms/step → more tok/s. |
+| **E8d** | NEW | E8c + `TRAIN_BATCH_TOKENS=262144` (to use freed VRAM) | 0 | +15-25% effective | **queued** | | will auto-launch when E8c exits. **Note**: E8c is taking ~18 min (vs 7 min normal) because coord_descent tuning recompiles for eval_model too. E8d will be similarly slow. Consider dropping coord_descent if OOM is not an issue. |
 | **E6** | S10 | Parameter Banking + Parallel Muon (batch NS across shape-matched params) | 150 | +10-20% | pending_wip | | big coding effort |
 | **E7** | S4 | Fused n-gram bias Triton kernel (~200 kernel launches/step currently) | 150 | +5-10% | pending | | Triton works on 3090 |
 | **E9** | S12 | Multi-shard loader + dedicated copy stream | 100 | +2-5% | pending | | incremental prefetch win |
