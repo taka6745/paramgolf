@@ -133,9 +133,23 @@ PREQUANT_TTT_ENABLED="${PREQUANT_TTT_ENABLED:-1}"
 PREQUANT_TTT_LR="${PREQUANT_TTT_LR:-0.00045}"
 PREQUANT_TTT_EPOCHS="${PREQUANT_TTT_EPOCHS:-8}"
 PREQUANT_TTT_FREEZE_BLOCKS="${PREQUANT_TTT_FREEZE_BLOCKS:-1}"
-PREQUANT_TTT_BATCH_SEQS="${PREQUANT_TTT_BATCH_SEQS:-32}"
 PREQUANT_TTT_GRAD_CLIP="${PREQUANT_TTT_GRAD_CLIP:-1.0}"
 PREQUANT_TTT_COSINE_DECAY="${PREQUANT_TTT_COSINE_DECAY:-1}"
+
+# Auto-detect low-VRAM GPU (e.g. RTX 3090 24 GB) and lower TTT microbatch.
+# At batch_seqs=32, TTT peaks at ~24 GB (model + 1.5 GB n-grams + Adam state +
+# activations for 32×2048 seqs × 11 layers × 2 loops). H100 80 GB is fine;
+# 3090 24 GB OOMs. Drop to 8 (4× less activation memory) if VRAM < 40 GB.
+# Honors explicit PREQUANT_TTT_BATCH_SEQS override.
+if [ -z "${PREQUANT_TTT_BATCH_SEQS:-}" ]; then
+    _GPU_VRAM_MIB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d '[:space:]')
+    if [ -n "${_GPU_VRAM_MIB:-}" ] && [ "${_GPU_VRAM_MIB}" -lt 40000 ] 2>/dev/null; then
+        echo "[run] low-VRAM GPU detected (${_GPU_VRAM_MIB} MiB < 40000) — PREQUANT_TTT_BATCH_SEQS 32 → 8"
+        PREQUANT_TTT_BATCH_SEQS=8
+    else
+        PREQUANT_TTT_BATCH_SEQS=32
+    fi
+fi
 
 # === Chunk 2/3 world-novel adds ===
 
