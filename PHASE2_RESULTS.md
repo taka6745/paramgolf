@@ -11,6 +11,7 @@ Each row: shot id, hardware, wallclock, steps achieved, ms/step, val_bpb, artifa
 |---|---|---|---|---|---|---|---|---|---|---|
 | **P1 baseline (DIFF, unquantized)** | 1×H100 SXM 80GB HBM3 | 591s train + 1606s PreQ TTT (~37 min total) | 183 train + 8 PreQ TTT epochs | ~3230 ms/step | ~270K | **1.24108** (unquantized, post-PreQ-TTT) | ~16 MB (broken path) | 1.0× | **RESEARCH-GRADE — not comp-legal** (wallclock overrun on TTT) | 20260409T0316Z |
 | **P1 baseline (DIFF, quantized)** | 1×H100 SXM 80GB HBM3 | same + GPTQ int6 + brotli | post-train | n/a | n/a | **3.86174** ❌ | n/a | n/a | **BROKEN** — NGR_LOG_FREQ_INV serialization bug (Shot 0e blocks P2 start) | 20260409T0317Z |
+| **E1 (Shot 0e validation, 3090, TTT=0)** | 1×RTX 3090 24GB | 108s train + 234s eval + ~60s GPTQ + 233s quant eval (~11 min total) | 37 train (wallclock cap) | **2933 ms/step** | 80K | unquant **3.03477** / quant **3.05683** | **11,651,969** (11.1 MB ✅) | baseline for P2 work | ✅ **Shot 0e CONFIRMED FIXED** — quant gap = **0.02206 BPB** (normal GPTQ int6 gap 0.01-0.02; was -2.62 BPB broken). Undertrained due to 120s cap + no TTT, but gap measurement is clean. | 20260409T0709Z |
 
 ---
 
