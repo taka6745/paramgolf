@@ -417,52 +417,9 @@ class GPT(nn.Module):
 			_prev2=torch.cat([_zeros1,input_ids[:,:-1]],dim=1).reshape(-1).long()
 			_prev3=torch.cat([_zeros2,input_ids[:,:-2]],dim=1).reshape(-1).long()
 			H=self._ngram_hash
-			# NGR_LOG_FREQ_INV: one-time inverse-log-frequency bucket mutation.
-			# SHOT 0e FIX: multipliers are stored in persistent buffers so they
-			# survive serialize→deserialize. On a fresh run, we compute them from
-			# the current batch. On a restored run, we use the saved multipliers.
-			# Either way, they're applied to the freshly-loaded tables.
-			if self._nlfi_enabled and not self._nlfi_applied:
-				try:
-					if int(self._nlfi_stored_flag.item())==1:
-						# Restored from state_dict — use the saved multipliers
-						_bg_mult=self._nlfi_bigram_mult
-						_tg_mult=self._nlfi_trigram_mult
-						_fg_mult=self._nlfi_fourgram_mult
-						print('NGR_LOG_FREQ_INV: restored multipliers from state_dict',flush=True)
-					else:
-						# Fresh compute from the current batch's hash bucket counts
-						_bg_h_init=(_ids_flat*36313)%H
-						_bg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
-						_bg_counts.scatter_add_(0,_bg_h_init,torch.ones_like(_bg_h_init,dtype=torch.float32))
-						_bg_mult=1.0/torch.log(2.0+_bg_counts)
-						_tg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1))%H
-						_tg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
-						_tg_counts.scatter_add_(0,_tg_h_init,torch.ones_like(_tg_h_init,dtype=torch.float32))
-						_tg_mult=1.0/torch.log(2.0+_tg_counts)
-						_fg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1)^((_ids_flat*41077)>>2))%H
-						_fg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
-						_fg_counts.scatter_add_(0,_fg_h_init,torch.ones_like(_fg_h_init,dtype=torch.float32))
-						_fg_mult=1.0/torch.log(2.0+_fg_counts)
-						# Save to persistent buffers so serialize→deserialize preserves them
-						self._nlfi_bigram_mult.data=_bg_mult.detach().to(self._nlfi_bigram_mult.dtype)
-						self._nlfi_trigram_mult.data=_tg_mult.detach().to(self._nlfi_trigram_mult.dtype)
-						self._nlfi_fourgram_mult.data=_fg_mult.detach().to(self._nlfi_fourgram_mult.dtype)
-						self._nlfi_stored_flag.data=torch.ones(1,dtype=torch.int64,device=self._nlfi_stored_flag.device)
-						print('NGR_LOG_FREQ_INV: computed + saved multipliers from current batch',flush=True)
-					# Apply to the n-gram tables in place
-					if self._bigram_tab.numel()>1:
-						if self._bigram_tab.dim()==2:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype).unsqueeze(1))
-						else:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype))
-					if self._trigram_tab.numel()>1:
-						if self._trigram_tab.dim()==2:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype).unsqueeze(1))
-						else:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype))
-					if self._fourgram_tab.numel()>1:
-						if self._fourgram_tab.dim()==2:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype).unsqueeze(1))
-						else:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype))
-					print('NGR_LOG_FREQ_INV: applied mutation to n-gram tables (one-time per process)',flush=True)
-				except Exception as _e:print(f'NGR_LOG_FREQ_INV: mutation failed ({_e})',flush=True)
-				self._nlfi_applied=True
+			# NGR_LOG_FREQ_INV setup happens EAGERLY via _apply_nlfi_once() before
+			# torch.compile wraps this model (see train_model/train_and_eval). This
+			# avoids a .item() graph break that fullgraph=True can't tolerate.
 			_h_bi=(_ids_flat*36313)%H
 			# CTX_PARTITIONED_TAB: rotate bigram hash by per-token slice for finer smoothing
 			if self._ctx_part_tab_enabled:
@@ -493,6 +450,55 @@ class GPT(nn.Module):
 					_bias=_bias+self._ngram_w_fourgram*self._fourgram_tab[_h_four].reshape(B,S,-1)
 				logits=logits+_bias.to(dtype=logits.dtype)
 		return logits
+	@torch.no_grad()
+	def _apply_nlfi_once(self,input_ids):
+		# SHOT 0e: one-time NGR_LOG_FREQ_INV bucket mutation. Called EAGERLY from
+		# train_model/train_and_eval before torch.compile wraps the model, so the
+		# compiled forward never sees the .item() branch (which would graph-break
+		# fullgraph=True compile). Idempotent: _nlfi_applied guards against re-entry.
+		if self._nlfi_applied or not self._nlfi_enabled:return
+		if not(self._ngram_enabled and self._bigram_tab.numel()>1):return
+		try:
+			_ids_flat=input_ids.reshape(-1).long()
+			H=self._ngram_hash
+			if int(self._nlfi_stored_flag.item())==1:
+				# Restored from state_dict — use the saved multipliers
+				_bg_mult=self._nlfi_bigram_mult
+				_tg_mult=self._nlfi_trigram_mult
+				_fg_mult=self._nlfi_fourgram_mult
+				print('NGR_LOG_FREQ_INV: restored multipliers from state_dict',flush=True)
+			else:
+				# Fresh compute from the current batch's hash bucket counts
+				_bg_h_init=(_ids_flat*36313)%H
+				_bg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+				_bg_counts.scatter_add_(0,_bg_h_init,torch.ones_like(_bg_h_init,dtype=torch.float32))
+				_bg_mult=1.0/torch.log(2.0+_bg_counts)
+				_tg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1))%H
+				_tg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+				_tg_counts.scatter_add_(0,_tg_h_init,torch.ones_like(_tg_h_init,dtype=torch.float32))
+				_tg_mult=1.0/torch.log(2.0+_tg_counts)
+				_fg_h_init=((_ids_flat*36313)^((_ids_flat*39979)>>1)^((_ids_flat*41077)>>2))%H
+				_fg_counts=torch.zeros(H,dtype=torch.float32,device=_ids_flat.device)
+				_fg_counts.scatter_add_(0,_fg_h_init,torch.ones_like(_fg_h_init,dtype=torch.float32))
+				_fg_mult=1.0/torch.log(2.0+_fg_counts)
+				self._nlfi_bigram_mult.data=_bg_mult.detach().to(self._nlfi_bigram_mult.dtype)
+				self._nlfi_trigram_mult.data=_tg_mult.detach().to(self._nlfi_trigram_mult.dtype)
+				self._nlfi_fourgram_mult.data=_fg_mult.detach().to(self._nlfi_fourgram_mult.dtype)
+				self._nlfi_stored_flag.data=torch.ones(1,dtype=torch.int64,device=self._nlfi_stored_flag.device)
+				print('NGR_LOG_FREQ_INV: computed + saved multipliers from current batch',flush=True)
+			# Apply to the n-gram tables in place
+			if self._bigram_tab.numel()>1:
+				if self._bigram_tab.dim()==2:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype).unsqueeze(1))
+				else:self._bigram_tab.mul_(_bg_mult.to(self._bigram_tab.dtype))
+			if self._trigram_tab.numel()>1:
+				if self._trigram_tab.dim()==2:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype).unsqueeze(1))
+				else:self._trigram_tab.mul_(_tg_mult.to(self._trigram_tab.dtype))
+			if self._fourgram_tab.numel()>1:
+				if self._fourgram_tab.dim()==2:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype).unsqueeze(1))
+				else:self._fourgram_tab.mul_(_fg_mult.to(self._fourgram_tab.dtype))
+			print('NGR_LOG_FREQ_INV: applied mutation to n-gram tables (one-time per process)',flush=True)
+		except Exception as _e:print(f'NGR_LOG_FREQ_INV: mutation failed ({_e})',flush=True)
+		self._nlfi_applied=True
 	def forward(self,input_ids,target_ids):logits=self.forward_logits(input_ids);return F.cross_entropy(logits.reshape(-1,logits.size(-1)).float(),target_ids.reshape(-1),reduction='mean')
 def classify_param(name):
 	if'tok_emb'in name or'lm_head'in name:return'embed'
@@ -741,7 +747,13 @@ def eval_val_sliding_ttt(h,base_model,rank,world_size,device,val_data,stride):
 	base_model.eval();log(f"ttt_sliding:done val_loss={val_loss:.6f}{ val_bpb=:.6f} elapsed={time.perf_counter()-t0:.1f}s");return val_loss,val_bpb
 def timed_eval(label,fn,*args,**kwargs):torch.cuda.synchronize();t0=time.perf_counter();val_loss,val_bpb=fn(*args,**kwargs);torch.cuda.synchronize();elapsed_ms=1e3*(time.perf_counter()-t0);log(f"{label} val_loss:{val_loss:.8f} val_bpb:{val_bpb:.8f} eval_time:{elapsed_ms:.0f}ms");return val_loss,val_bpb
 def train_model(h,device,val_data):
-	base_model=GPT(h).to(device).bfloat16();restore_fp32_params(base_model);compiled_model=torch.compile(base_model,dynamic=False,fullgraph=True)
+	base_model=GPT(h).to(device).bfloat16();restore_fp32_params(base_model)
+	# SHOT 0e: run NLFI one-time setup eagerly BEFORE torch.compile so the
+	# compiled forward never sees .item() (which graph-breaks fullgraph=True).
+	if getattr(base_model,'_nlfi_enabled',False) and not getattr(base_model,'_nlfi_applied',False):
+		_sample=val_data.val_tokens[:h.eval_seq_len].to(device=device,dtype=torch.int64).view(1,-1)
+		base_model._apply_nlfi_once(_sample)
+	compiled_model=torch.compile(base_model,dynamic=False,fullgraph=True)
 	if h.distributed:model=DDP(compiled_model,device_ids=[h.local_rank],broadcast_buffers=False)
 	else:model=compiled_model
 	log(f"model_params:{sum(p.numel()for p in base_model.parameters())}");optimizers=Optimizers(h,base_model);train_loader=ShuffledSequenceLoader(h,device);max_wallclock_ms=1e3*h.max_wallclock_seconds if h.max_wallclock_seconds>0 else None
@@ -877,6 +889,12 @@ def train_and_eval(h,device):
 	if h.distributed:dist.barrier()
 	eval_model=deserialize(h,device)
 	if h.num_loops>0:eval_model.looping_active=True
+	# SHOT 0e: same eager NLFI setup on the deserialized eval model before compile.
+	# After serialize→deserialize, _nlfi_stored_flag should be 1 (restored from
+	# state_dict), so this takes the "restored multipliers" branch.
+	if getattr(eval_model,'_nlfi_enabled',False) and not getattr(eval_model,'_nlfi_applied',False):
+		_sample=val_data.val_tokens[:h.eval_seq_len].to(device=device,dtype=torch.int64).view(1,-1)
+		eval_model._apply_nlfi_once(_sample)
 	compiled_model=torch.compile(eval_model,dynamic=False,fullgraph=True);timed_eval('quantized',eval_val,h,device,val_data,compiled_model)
 	if h.sliding_window_enabled:timed_eval('quantized_sliding_window',eval_val_sliding,h,device,val_data,eval_model)
 	if h.ttt_enabled:
