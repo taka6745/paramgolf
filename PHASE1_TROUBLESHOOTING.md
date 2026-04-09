@@ -133,6 +133,57 @@ ln -sfn /root/paramgolf_bigdata/docs_selected.jsonl data/datasets/docs_selected.
 - **PERMANENT** — checked into repo. The script bug is also fixable upstream
   (skip unlink when source == destination), TODO add a one-line guard.
 
+## 2026-04-09 00:25Z — Cron fire 2: smoke test in torch.compile phase, tokenize alive
+
+- Tokenize PID 2280 alive, 322 min cumulative CPU, 31 train + 1 val shard (rate
+  slowed slightly due to CPU competition with inductor workers).
+- Smoke test PID 461291 alive, in torch.compile / TorchInductor phase. ~30
+  `torch._inductor.compile_worker` subprocesses fanned out compiling kernels.
+- GPU shows 0% / 1 MiB because compile happens on CPU before any kernel runs.
+- Smoke log stops at `gptq:reserving 12s, effective=18000ms` — that's the
+  pre-train init line; no training output yet because first-run torch.compile
+  is taking 1-3 min.
+- RISK: phase1_launch.sh wraps the smoke test in `timeout 180`. If compile
+  takes >150s, the bash timeout kills the python process before training even
+  starts → smoke test fails → Shot 1 never auto-launches.
+- Decision: let it ride for one more fire. If next fire (00:38Z) shows the
+  smoke test still in compile or already failed, disable torch.compile in
+  train_gpt_phase1.py via env var (TORCH_COMPILE_DISABLE=1 or similar) and
+  retry. Compile cache will speed up subsequent runs anyway.
+
+## 2026-04-09 00:14Z — FIX 7: GitHub push blocker (PERMANENT)
+
+- Every git push to origin/main was failing with `pre-receive hook declined`
+  because commit `96efff3` ("NIGHT_MODE TERMINATED 2107Z") added 13 .npy files
+  >100 MB (GitHub's hard per-file limit). Earlier git push exit codes were 0
+  but the remote rejected silently.
+- Fix: destructive history rewrite. Reset main to b8f21c6 (origin), cherry-pick
+  96efff3 with 55 .npy/.npz files removed from the index, then cherry-pick the
+  8 Phase 1 commits on top, force-push with `--force-with-lease`. Backup tag
+  `pre-cleanup-backup-20260409` saved the pre-cleanup HEAD locally.
+- Prevention (PERMANENT): added `data/*.npy data/*.npz data/*.bin data/*.pkl
+  data/*.pt data/*.pth` to .gitignore. Created `.githooks/pre-commit` that
+  refuses any commit adding a single file >50 MB with a clear error pointing
+  at .gitignore / git LFS. Activated via `git config core.hooksPath .githooks`.
+- New main HEAD: 745650d. Force-push succeeded.
+
+## 2026-04-09 00:18Z — KNOWN ISSUE: FA3 ABI mismatch (works around via SDPA fallback)
+
+- `from flash_attn_interface import flash_attn_func` fails on the pod with
+  `ImportError: /usr/local/lib/python3.11/dist-packages/flash_attn_3/_C.abi3.so:
+  undefined symbol: aoti_torch_create_device_guard`.
+- Root cause: the FA3 wheel installed on this image was compiled against
+  PyTorch >= 2.5, but the pod has torch 2.4.1+cu124. The symbol
+  `aoti_torch_create_device_guard` was added in 2.5.
+- Impact: `train_gpt_phase1.py` has a `try: ... except ImportError: ...` block
+  (line 6-18) that falls back to `F.scaled_dot_product_attention` when FA3 is
+  unavailable. **Math is identical** — only speed differs. SDPA on H100 is
+  ~30-50% slower than FA3 for our shape (n_q != n_kv GQA). For Phase 1
+  validation this is acceptable; Phase 2 should fix FA3 either by upgrading
+  torch to 2.5 or installing a torch-2.4-compatible FA3 wheel.
+- TODO Phase 2: `pip install torch==2.5.1 && pip install flash-attn-3 --upgrade`
+  on the pod (after Phase 1 lands).
+
 ## 2026-04-09 00:08Z — Cron fire 1: tokenize alive, 14 train + 1 val shard, 14 min elapsed
 
 - PID 2280 alive, 2h27m cumulative CPU (~10 cores worth across the elapsed 14 min)
