@@ -20,9 +20,11 @@
 | fire | utc | action | next |
 |---|---|---|---|
 | 1 | 20260409T0544Z | E1 running: get_data.sh downloading docs_selected.jsonl from HF. GPU 0%, container disk 60/80 GB (75%), 0 shards yet. Process alive (PID 307). | wait for tokenize + train + eval; next fire ~17 min |
+| 2 | 20260409T0609Z | E1 still running: tokenize at 6.4M/15.4M docs (42%), 77 train shards written, hard-link fix confirmed (container disk 60→53 GB after cache drop), GPU 0% (tokenize CPU-only). No errors. | wait for tokenize to complete + shards + n-grams + train; next fire ~17 min |
 
 ## Running tally
 
-- Pod M uptime: ~5 min
-- Pod M spend: ~$0.04
-- Total commits by driver: 0 (pre-first-fire)
+- Pod M uptime: ~28 min
+- Pod M spend: ~$0.22
+- Total commits by driver: 1 (fire 1)
+- E1 phase: tokenize ~42% done, expecting another ~30-40 min to tokenize+ngram+train
