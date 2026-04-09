@@ -762,6 +762,13 @@ def train_model(h,device,val_data):
 	# time is front-loaded here — free, not counted toward the 600s budget.
 	train_loader.prefill(h.train_batch_tokens,h.grad_accum_steps)
 	if max_wallclock_ms is not None:max_wallclock_ms-=h.gptq_reserve_seconds*1e3;log(f"gptq:reserving {h.gptq_reserve_seconds:.0f}s, effective={max_wallclock_ms:.0f}ms")
+	# Shot 17: Fuzzy LR bandit. Thompson-sample a per-step LR multiplier from
+	# {0.5x, 1x, 2x} * base schedule. Reward = train_loss decrease. Arms with
+	# higher mean reward get sampled more. Disabled by default.
+	_fuzzy_enabled=int(os.environ.get('USE_FUZZY_LR_BANDIT','0'))
+	_fuzzy_arms=[0.5,1.0,2.0];_fuzzy_means=[0.0,0.0,0.0];_fuzzy_counts=[1,1,1]
+	_fuzzy_prev_loss=None;_fuzzy_arm_idx=1
+	if _fuzzy_enabled:log(f"FUZZY_LR_BANDIT: enabled arms={_fuzzy_arms} (Shot 17)")
 	def training_frac(step,elapsed_ms):
 		if max_wallclock_ms is None:return step/max(h.iterations,1)
 		return elapsed_ms/max(max_wallclock_ms,1e-09)
@@ -807,7 +814,18 @@ def train_model(h,device,val_data):
 			break
 		elapsed_ms=training_time_ms+1e3*(time.perf_counter()-t0);frac=training_frac(step,elapsed_ms);scale=lr_mul(frac)
 		if h.num_loops>0 and not base_model.looping_active and frac>=h.enable_looping_at:base_model.looping_active=True;log(f"layer_loop:enabled step:{step} frac:{frac:.3f} encoder:{base_model.encoder_indices} decoder:{base_model.decoder_indices}")
+		# Shot 17: Fuzzy LR bandit — Thompson sample an arm and apply its LR multiplier
+		if _fuzzy_enabled:
+			_samples=[_fuzzy_means[i]+random.gauss(0,1.0/(_fuzzy_counts[i]**0.5))for i in range(len(_fuzzy_arms))]
+			_fuzzy_arm_idx=_samples.index(max(_samples));scale=scale*_fuzzy_arms[_fuzzy_arm_idx]
 		train_loss=step_fn(step,scale)
+		# Shot 17: bandit reward update (reward = train_loss decrease vs prev step)
+		if _fuzzy_enabled:
+			_cur_loss=train_loss.item()
+			if _fuzzy_prev_loss is not None:
+				_reward=_fuzzy_prev_loss-_cur_loss;_fuzzy_counts[_fuzzy_arm_idx]+=1
+				_fuzzy_means[_fuzzy_arm_idx]+=(_reward-_fuzzy_means[_fuzzy_arm_idx])/_fuzzy_counts[_fuzzy_arm_idx]
+			_fuzzy_prev_loss=_cur_loss
 		with torch.no_grad():
 			for(name,t)in base_model.state_dict().items():ema_state[name].mul_(ema_decay).add_(t.detach().float(),alpha=1.-ema_decay)
 		step+=1;approx_training_time_ms=training_time_ms+1e3*(time.perf_counter()-t0);should_log_train=h.train_log_every>0 and(step<=5 or step%h.train_log_every==0 or stop_after_step is not None)
@@ -815,6 +833,9 @@ def train_model(h,device,val_data):
 		reached_cap=max_wallclock_ms is not None and approx_training_time_ms>=max_wallclock_ms
 		if h.distributed and max_wallclock_ms is not None:reached_cap_tensor=torch.tensor(int(reached_cap),device=device);dist.all_reduce(reached_cap_tensor,op=dist.ReduceOp.MAX);reached_cap=bool(reached_cap_tensor.item())
 		if stop_after_step is None and reached_cap:stop_after_step=step
+	if _fuzzy_enabled:
+		_best_arm=_fuzzy_means.index(max(_fuzzy_means));_total=sum(_fuzzy_counts)-len(_fuzzy_counts)
+		log(f"FUZZY_LR_BANDIT summary: arms={_fuzzy_arms} means={[round(m,4)for m in _fuzzy_means]} counts={[c-1 for c in _fuzzy_counts]} total_steps={_total} best_arm={_fuzzy_arms[_best_arm]}")
 	log(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB");log('ema:applying EMA weights');current_state=base_model.state_dict();avg_state={name:t.to(dtype=current_state[name].dtype)for(name,t)in ema_state.items()};base_model.load_state_dict(avg_state,strict=True);return base_model,compiled_model
 def prequant_ttt_adapt_adamw(h,base_model,device,val_tokens,rank=0,world_size=1):
 	"""Pre-Quant AdamW TTT (ported from PR #1485 / #1306).
