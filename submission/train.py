@@ -361,6 +361,11 @@ class GPT(nn.Module):
 		self.register_buffer('_fourgram_tab',torch.zeros(1,dtype=torch.float32),persistent=False)
 		if self._ngram_enabled:
 			vs=h.vocab_size
+			# E11: optional bf16 n-gram tables. Saves 750 MB VRAM (3 tables × 512 MB → 256 MB).
+			# Log-prob values are in ~(-15, 0) range, bf16 precision (~3 decimal digits) is
+			# sufficient. Enable via USE_NGRAM_BF16=1.
+			_ngram_bf16=bool(int(os.environ.get('USE_NGRAM_BF16','0')))
+			_ngram_dtype=torch.bfloat16 if _ngram_bf16 else torch.float32
 			for tab_attr,fname,label in [
 				('_bigram_tab',f'data/bigram_tab_{vs}v.npy','bigram'),
 				('_trigram_tab',f'data/trigram_logprobs_{vs}v.npy','trigram'),
@@ -368,8 +373,9 @@ class GPT(nn.Module):
 			]:
 				try:
 					_arr=np.load(fname)
-					setattr(self,tab_attr,torch.from_numpy(_arr).float())
-					print(f'NGRAM_BIAS: loaded {label} {_arr.shape} from {fname}',flush=True)
+					_tab=torch.from_numpy(_arr).to(dtype=_ngram_dtype)
+					setattr(self,tab_attr,_tab)
+					print(f'NGRAM_BIAS: loaded {label} {_arr.shape} from {fname} dtype={_ngram_dtype}',flush=True)
 				except Exception as _e:
 					print(f'NGRAM_BIAS: {label} load failed ({fname}): {_e}',flush=True)
 		self._init_weights()
