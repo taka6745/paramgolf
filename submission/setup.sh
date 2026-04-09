@@ -32,15 +32,24 @@ else
     echo "[setup] torch 2.9.1+cu128 already installed"
 fi
 
-# 2. Verify FA3 imports cleanly
-echo "[setup] verifying flash-attn-3 import..."
+# 2. Verify FA3 import (NON-FATAL — train.py has a clean SDPA fallback)
+# flash-attn-3 is NOT on PyPI as a normal package. The runpod/pytorch image
+# sometimes pre-installs it as a private wheel (the cu128torch291cxx11abitrue
+# build from Dao-AILab), sometimes not. If absent, train.py's try/except catches
+# the ImportError and uses torch SDPA instead. Speed cost: ~30% per step on H100
+# for our GQA shape (n_q != n_kv). Math is identical.
+echo "[setup] checking flash-attn-3 (optional fast path)..."
 python3 -c "
-from flash_attn_interface import flash_attn_func
 import torch
 print(f'  torch: {torch.__version__}')
 print(f'  cuda available: {torch.cuda.is_available()}')
 print(f'  device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NONE\"}')
-print('  flash_attn_3: OK')
+try:
+    from flash_attn_interface import flash_attn_func
+    print('  flash_attn_3: OK (using fast Hopper path)')
+except ImportError as e:
+    print(f'  flash_attn_3: NOT FOUND — train.py will use torch SDPA fallback (~30% slower, math identical)')
+    print(f'    reason: {e}')
 "
 
 # 3. Other deps
