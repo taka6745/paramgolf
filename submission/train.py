@@ -507,10 +507,17 @@ def classify_param(name):
 	return'other'
 @torch.compile
 def zeropower_via_newtonschulz5(G,steps=10,eps=1e-07):
-	a,b,c=3.4445,-4.775,2.0315;X=G.bfloat16();X/=X.norm()+eps;transposed=G.size(0)>G.size(1)
-	if transposed:X=X.T
-	for _ in range(steps):A=X@X.T;B=b*A+c*A@A;X=a*X+B@X
-	return X.T if transposed else X
+	# E6: handle both 2D (rows, cols) and 3D (batch, rows, cols) inputs for
+	# Parallel Muon. Uses transpose(-2,-1) everywhere so the code is shape-
+	# generic. 2D path is identical to the original (dynamo constant-folds
+	# the dim check).
+	a,b,c=3.4445,-4.775,2.0315;X=G.bfloat16()
+	if X.dim()==2:X=X/(X.norm()+eps)
+	else:X=X/(X.flatten(start_dim=-2).norm(dim=-1,keepdim=True).unsqueeze(-1)+eps)
+	transposed=X.size(-2)>X.size(-1)
+	if transposed:X=X.transpose(-2,-1)
+	for _ in range(steps):A=X@X.transpose(-2,-1);B=b*A+c*A@A;X=a*X+B@X
+	return X.transpose(-2,-1) if transposed else X
 class Muon(torch.optim.Optimizer):
 	def __init__(self,params,lr,momentum,backend_steps,nesterov=True,weight_decay=.0,row_normalize=False):super().__init__(params,dict(lr=lr,momentum=momentum,backend_steps=backend_steps,nesterov=nesterov,weight_decay=weight_decay,row_normalize=row_normalize))
 	@torch.no_grad()
@@ -519,27 +526,65 @@ class Muon(torch.optim.Optimizer):
 		if closure is not None:
 			with torch.enable_grad():loss=closure()
 		distributed=dist.is_available()and dist.is_initialized();world_size=dist.get_world_size()if distributed else 1;rank=dist.get_rank()if distributed else 0
+		_use_parallel_muon=int(os.environ.get('USE_PARALLEL_MUON','0'))
+		_use_normuon=int(os.environ.get('USE_NORMUON','0'))
 		for group in self.param_groups:
 			params=group['params']
 			if not params:continue
-			lr=group['lr'];momentum=group['momentum'];backend_steps=group['backend_steps'];nesterov=group['nesterov'];total_params=sum(int(p.numel())for p in params);updates_flat=torch.zeros(total_params,device=params[0].device,dtype=torch.bfloat16);curr=0
-			for(i,p)in enumerate(params):
-				if i%world_size==rank and p.grad is not None:
-					g=p.grad;state=self.state[p]
-					if'momentum_buffer'not in state:state['momentum_buffer']=torch.zeros_like(g)
-					buf=state['momentum_buffer'];buf.mul_(momentum).add_(g)
-					if nesterov:g=g.add(buf,alpha=momentum)
-					if group.get('row_normalize',False):row_norms=g.float().norm(dim=-1,keepdim=True).clamp_min(1e-07);g=g/row_norms.to(g.dtype)
-					g=zeropower_via_newtonschulz5(g,steps=backend_steps)
-					# NORMUON (NIGHT_MODE n=2 confirmed-win): per-row normalize AFTER Newton-Schulz.
-					# Distinct from row_normalize above (= MuonEq-R, normalize BEFORE NS). NorMuon
-					# enforces unit-norm rows on the orthogonalized output, tightening orthogonality.
-					# Mac SETUP §50 / LESSONS §35. Enable via USE_NORMUON=1.
-					if int(os.environ.get('USE_NORMUON','0')):
-						_post_norm=g.float().norm(dim=-1,keepdim=True).clamp(min=1e-8)
-						g=g/_post_norm.to(g.dtype)
-					g*=max(1,g.size(0)/g.size(1))**.5;updates_flat[curr:curr+p.numel()]=g.reshape(-1)
-				curr+=p.numel()
+			lr=group['lr'];momentum=group['momentum'];backend_steps=group['backend_steps'];nesterov=group['nesterov']
+			total_params=sum(int(p.numel())for p in params);updates_flat=torch.zeros(total_params,device=params[0].device,dtype=torch.bfloat16)
+			# Per-param offsets into updates_flat (same order as params list, regardless of which rank owns each)
+			_offsets=[0]
+			for p in params:_offsets.append(_offsets[-1]+p.numel())
+			if _use_parallel_muon:
+				# E6 Parameter Banking + Parallel Muon: group params by shape, stack
+				# grads into (n, rows, cols), run Newton-Schulz iterations in ONE
+				# batched call. Reduces ~24 serial NS calls per step → ~2-3 batched
+				# calls (one per distinct param shape). Cuts kernel launch overhead.
+				_shape_groups={}  # shape_tuple -> list of (i, p)
+				for i,p in enumerate(params):
+					if i%world_size!=rank:continue
+					if p.grad is None:continue
+					sh=tuple(p.grad.shape)
+					_shape_groups.setdefault(sh,[]).append((i,p))
+				for sh,grp in _shape_groups.items():
+					# Per-param momentum + nesterov + pre-NS row_normalize (sequential; tiny)
+					_grads=[]
+					for i,p in grp:
+						g=p.grad;state=self.state[p]
+						if'momentum_buffer'not in state:state['momentum_buffer']=torch.zeros_like(g)
+						buf=state['momentum_buffer'];buf.mul_(momentum).add_(g)
+						if nesterov:g=g.add(buf,alpha=momentum)
+						if group.get('row_normalize',False):
+							_rn=g.float().norm(dim=-1,keepdim=True).clamp_min(1e-07);g=g/_rn.to(g.dtype)
+						_grads.append(g)
+					# BATCHED NS — single call for the whole shape group
+					_stacked=torch.stack(_grads,dim=0)
+					_result=zeropower_via_newtonschulz5(_stacked,steps=backend_steps)
+					# Scatter results back with per-param NORMUON + scaling
+					for _bi,(i,p) in enumerate(grp):
+						g=_result[_bi]
+						if _use_normuon:
+							_post_norm=g.float().norm(dim=-1,keepdim=True).clamp(min=1e-8);g=g/_post_norm.to(g.dtype)
+						g=g*max(1,g.size(0)/g.size(1))**.5
+						updates_flat[_offsets[i]:_offsets[i+1]]=g.reshape(-1)
+			else:
+				# Original serial path
+				curr=0
+				for(i,p)in enumerate(params):
+					if i%world_size==rank and p.grad is not None:
+						g=p.grad;state=self.state[p]
+						if'momentum_buffer'not in state:state['momentum_buffer']=torch.zeros_like(g)
+						buf=state['momentum_buffer'];buf.mul_(momentum).add_(g)
+						if nesterov:g=g.add(buf,alpha=momentum)
+						if group.get('row_normalize',False):row_norms=g.float().norm(dim=-1,keepdim=True).clamp_min(1e-07);g=g/row_norms.to(g.dtype)
+						g=zeropower_via_newtonschulz5(g,steps=backend_steps)
+						# NORMUON (NIGHT_MODE n=2 confirmed-win): per-row normalize AFTER Newton-Schulz.
+						if _use_normuon:
+							_post_norm=g.float().norm(dim=-1,keepdim=True).clamp(min=1e-8)
+							g=g/_post_norm.to(g.dtype)
+						g*=max(1,g.size(0)/g.size(1))**.5;updates_flat[curr:curr+p.numel()]=g.reshape(-1)
+					curr+=p.numel()
 			if distributed:dist.all_reduce(updates_flat,op=dist.ReduceOp.SUM)
 			wd=group.get('weight_decay',.0);curr=0
 			for p in params:
