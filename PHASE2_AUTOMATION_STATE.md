@@ -105,6 +105,8 @@ Spun up 23:11Z to test CHAMP_F: CHAMP_D config + Pre-Quant TTT 8 epochs (the mis
 
 **23:46Z fire**: bootstrap-data phase, sentencepiece training in progress (no cached model on fresh pod), 0/3 ngram files yet. ETA to CHAMP_F training start ~00:25Z. Spend ~$0.17.
 
+**00:11Z fire**: still SP-training phase. Done: normalization (20.5B chars), now "Tokenizing input sentences with whitespace: 12426626" — sub-step before BPE merges. 0/3 ngram files. CHAMP_F start ETA pushed to ~01:00-01:15Z. Spend ~$0.30.
+
 **WAVE 3 plan** (after wave 2 results, for future cron fires):
 - Stack the best wave 2 winner with E6 + E8 + E4b config into a true champion run
 - Try explicit CUDA graph capture if we have time (requires fixing remaining rotary/state issues)
