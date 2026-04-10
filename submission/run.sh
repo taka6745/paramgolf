@@ -204,6 +204,13 @@ USE_NGR_LOG_FREQ_INV="${USE_NGR_LOG_FREQ_INV:-1}"
 USE_CTX_PARTITIONED_TAB="${USE_CTX_PARTITIONED_TAB:-1}"
 CTX_PARTITION_SLICES="${CTX_PARTITION_SLICES:-16}"
 
+# === Parallel Residuals (leaderboard #1 stack: PR #1493 / #1477) ===
+# When enabled, attn and mlp branches both consume the SAME normalized x_in
+# instead of mlp consuming attn's output. Inductor can fuse the two branches
+# better. ~+0.005-0.01 BPB on top stacks. Default off (opt-in) so existing
+# Phase 1 recipes are unchanged.
+USE_PARALLEL_RESIDUALS="${USE_PARALLEL_RESIDUALS:-0}"
+
 # === DRY_RUN mode for fast smoke testing (60s wallclock, no TTT, no real eval) ===
 if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "[run] DRY_RUN=1 — 60s smoke test"
@@ -229,6 +236,8 @@ echo "  USE_CMP_QUANT_VALUE_DEDUP=$USE_CMP_QUANT_VALUE_DEDUP step=$CMP_QUANT_DED
 echo "  USE_NGRAM_BIAS=$USE_NGRAM_BIAS USE_NGRAM_BACKOFF=$USE_NGRAM_BACKOFF buckets=$NGRAM_HASH_BUCKETS  (NIGHT_MODE n=3 confirmed)"
 echo "  USE_NGR_LOG_FREQ_INV=$USE_NGR_LOG_FREQ_INV USE_CTX_PARTITIONED_TAB=$USE_CTX_PARTITIONED_TAB slices=$CTX_PARTITION_SLICES  (world-novel L09)"
 echo "  USE_PREFETCH_LOADER=$USE_PREFETCH_LOADER depth=$PREFETCH_DEPTH pinned=$PREFETCH_PIN_MEMORY  (Phase 2: CPU/GPU parallel data pipeline)"
+echo "  USE_PARALLEL_RESIDUALS=$USE_PARALLEL_RESIDUALS  (leaderboard #1 stack)"
+echo "  MATRIX_BITS=${MATRIX_BITS:-6} USE_PARALLEL_MUON=${USE_PARALLEL_MUON:-0} TORCH_COMPILE_MODE=${TORCH_COMPILE_MODE:-default} USE_CUDNN_BENCHMARK=${USE_CUDNN_BENCHMARK:-1}  (Phase 2 wins inherited from env)"
 
 LOG="logs/run_seed${SEED}_$(date -u +%Y%m%dT%H%M%SZ).log"
 
@@ -276,6 +285,7 @@ USE_PREFETCH_LOADER="$USE_PREFETCH_LOADER" \
 PREFETCH_DEPTH="$PREFETCH_DEPTH" \
 PREFETCH_PIN_MEMORY="$PREFETCH_PIN_MEMORY" \
 PREFETCH_PREFILL_BATCHES="$PREFETCH_PREFILL_BATCHES" \
+USE_PARALLEL_RESIDUALS="$USE_PARALLEL_RESIDUALS" \
 python3 -u submission/train.py 2>&1 | tee "$LOG"
 
 echo

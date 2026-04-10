@@ -307,8 +307,21 @@ class MLP(nn.Module):
 			x=x_flat.reshape(orig_shape)
 		return self.proj(x)
 class Block(nn.Module):
-	def __init__(self,dim,num_heads,num_kv_heads,mlp_mult,rope_base,qk_gain_init,train_seq_len,layer_idx=0,ln_scale=False):super().__init__();self.attn_norm=RMSNorm();self.mlp_norm=RMSNorm();self.attn=CausalSelfAttention(dim,num_heads,num_kv_heads,rope_base,qk_gain_init,train_seq_len);self.mlp=MLP(dim,mlp_mult);self.attn_scale=nn.Parameter(torch.ones(dim,dtype=torch.float32));self.mlp_scale=nn.Parameter(torch.ones(dim,dtype=torch.float32));self.resid_mix=nn.Parameter(torch.stack((torch.ones(dim),torch.zeros(dim))).float());self.ln_scale_factor=1./math.sqrt(layer_idx+1)if ln_scale else 1.
-	def forward(self,x,x0):mix=self.resid_mix.to(dtype=x.dtype);x_in=mix[0][None,None,:]*x+mix[1][None,None,:]*x0;attn_out=self.attn(self.attn_norm(x_in)*self.ln_scale_factor);x_out=x_in+self.attn_scale.to(dtype=x_in.dtype)[None,None,:]*attn_out;x_out=x_out+self.mlp_scale.to(dtype=x_out.dtype)[None,None,:]*self.mlp(self.mlp_norm(x_out)*self.ln_scale_factor);return x_out
+	# Parallel Residuals (Shot 11+): when USE_PARALLEL_RESIDUALS=1, attn and mlp run
+	# on the same input x_in instead of mlp consuming attn's output. Used by leaderboard
+	# #1 stack. Inductor can fuse the two branches better; ~+0.005-0.01 BPB.
+	def __init__(self,dim,num_heads,num_kv_heads,mlp_mult,rope_base,qk_gain_init,train_seq_len,layer_idx=0,ln_scale=False):super().__init__();self.attn_norm=RMSNorm();self.mlp_norm=RMSNorm();self.attn=CausalSelfAttention(dim,num_heads,num_kv_heads,rope_base,qk_gain_init,train_seq_len);self.mlp=MLP(dim,mlp_mult);self.attn_scale=nn.Parameter(torch.ones(dim,dtype=torch.float32));self.mlp_scale=nn.Parameter(torch.ones(dim,dtype=torch.float32));self.resid_mix=nn.Parameter(torch.stack((torch.ones(dim),torch.zeros(dim))).float());self.ln_scale_factor=1./math.sqrt(layer_idx+1)if ln_scale else 1.;self._parallel_residuals=bool(int(os.environ.get('USE_PARALLEL_RESIDUALS','0')))
+	def forward(self,x,x0):
+		mix=self.resid_mix.to(dtype=x.dtype);x_in=mix[0][None,None,:]*x+mix[1][None,None,:]*x0
+		attn_out=self.attn(self.attn_norm(x_in)*self.ln_scale_factor)
+		if self._parallel_residuals:
+			# Parallel: attn and mlp both consume x_in
+			mlp_out=self.mlp(self.mlp_norm(x_in)*self.ln_scale_factor)
+			return x_in+self.attn_scale.to(dtype=x_in.dtype)[None,None,:]*attn_out+self.mlp_scale.to(dtype=x_in.dtype)[None,None,:]*mlp_out
+		# Serial (original): mlp consumes attn's output
+		x_out=x_in+self.attn_scale.to(dtype=x_in.dtype)[None,None,:]*attn_out
+		x_out=x_out+self.mlp_scale.to(dtype=x_out.dtype)[None,None,:]*self.mlp(self.mlp_norm(x_out)*self.ln_scale_factor)
+		return x_out
 	def forward_attn(self,x,x0):mix=self.resid_mix.to(dtype=x.dtype);x_in=mix[0][None,None,:]*x+mix[1][None,None,:]*x0;attn_out=self.attn(self.attn_norm(x_in)*self.ln_scale_factor);return x_in+self.attn_scale.to(dtype=x_in.dtype)[None,None,:]*attn_out
 	def forward_mlp(self,x):return x+self.mlp_scale.to(dtype=x.dtype)[None,None,:]*self.mlp(self.mlp_norm(x)*self.ln_scale_factor)
 class GPT(nn.Module):
