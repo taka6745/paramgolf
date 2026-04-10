@@ -112,14 +112,13 @@ export TORCHDYNAMO_DISABLE=0                # CRITICAL re-enable (run.sh default
 export TORCH_COMPILE_MODE=max-autotune-no-cudagraphs   # +3.7% over default mode (E4b)
 export USE_CUDNN_BENCHMARK=1                # +0.8% incremental (E5)
 
-# Our discovered quant fix (int8 instead of int6 — preserves converged quality)
-# CMP_QUANT_VALUE_DEDUP RE-ENABLED: NIGHT_MODE n=2 confirmed L10 world-novel,
-# alphabet-snap compression that trades minor quality for ~10-15% smaller artifact.
-# Needed to fit 11L+4x int8 (~36 MB raw) under the 16 MB cap. Was disabled in
-# the 6L+2x CHAMP_D run because we had artifact headroom. Now reinstated.
-export MATRIX_BITS=8                        # int8 weight quant (CHAMP_D validated, gap 0.001 BPB on 6L+2x)
-export USE_CMP_QUANT_VALUE_DEDUP=1          # alphabet snap for compression — NIGHT_MODE L10 win, restored
-export CMP_QUANT_DEDUP_STEP=2               # standard step
+# Quantization: int6 matrices + int8 embeddings (matches PR #1493 exactly).
+# LESSON LEARNED: int8 at 11L+4x = 19.6 MB artifact (OVER 16 MB cap) + catastrophic
+# quant gap (4.55 BPB). Int8 only works for smaller models (CHAMP_D 6L+2x = 9.55 MB).
+# CMP_QUANT_VALUE_DEDUP OFF because it destroyed quant quality in retry 4 (gap 3.46).
+export MATRIX_BITS=6                        # int6 weight quant (PR #1493 proven, gap 0.012 BPB at 11L+4x)
+export EMBED_BITS=8                         # int8 embeddings (PR #1493 exact)
+export USE_CMP_QUANT_VALUE_DEDUP=0          # OFF — destroyed quant quality at this scale
 
 # TTT — legal score-first only (matches PR #1493 exactly)
 # PR #1493 PR description: "no pre-quant TTT, no ETLB, no n-gram cache, no SLOT — fully compliant"
