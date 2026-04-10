@@ -48,15 +48,21 @@ export MAX_WALLCLOCK_SECONDS=600
 export NUM_LAYERS=6                         # was 8 — reverted to CHAMP_D validated
 export MLP_MULT=2
 
-# PR #1493 (leaderboard #1, val_bpb 1.0810) architecture techniques
+# PR #1493 (leaderboard #1, val_bpb 1.0810) architecture techniques (verified
+# from gh pr view 1493 + train_seed314.log Hyperparameters dump)
 export NUM_LOOPS=2                          # 3-layer depth recurrence
 export LOOP_START=3
 export LOOP_END=5
 export ENABLE_LOOPING_AT=0.35               # PR #1493 (we default to 0.5)
 export QK_GAIN_INIT=5.25                    # PR #1493
-export USE_PARALLEL_RESIDUALS=1             # PR #1493 (note: PR uses L7+, our impl is all-layers)
+export USE_PARALLEL_RESIDUALS=1             # MORE aggressive than PR #1493 (they use L7+ on 11L = 36% deepest;
+                                            # our binary flag with NUM_LAYERS=6 = 100% parallel. Bet: 6L
+                                            # has less to lose from missing serial composition than 11L,
+                                            # and we want speed for more steps on 1xH100 PCIe.)
 export EMA_DECAY=0.9965                     # PR #1493 (we default to 0.997)
 export WARMDOWN_FRAC=0.72                   # PR #1493 (we default to 0.667)
+export MUON_WD=0.095                        # PR #1493 (we default to 0.085)
+export MATRIX_LR=0.022                      # PR #1493 (we default to 0.020)
 
 # Our discovered speed wins
 export USE_PARALLEL_MUON=1                  # batched Newton-Schulz
