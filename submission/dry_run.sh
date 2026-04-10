@@ -93,6 +93,13 @@ export PARALLEL_RESIDUAL_START=7            # PR #1493: parallel residuals from 
                                             # Implemented via per-block flag (train.py Block.__init__),
                                             # respects PR #1493's "deep half parallel" principle.
 export USE_PARALLEL_RESIDUALS=0             # use PARALLEL_RESIDUAL_START=7 instead (per-block, not all-layers)
+export PARALLEL_START_LAYER=-1              # CRITICAL: disable the pre-existing two-lane decoder split
+                                            # mechanism (GPT.__init__:349, default 7). Without this, the
+                                            # two-lane code OVERRIDES our per-block parallel residuals for
+                                            # blocks 7-10 by calling forward_attn/forward_mlp on separate
+                                            # lanes instead of Block.forward(). PR #1493 uses GPT-J per-block
+                                            # style, NOT two-lane split. This was silently active in retries
+                                            # 4+5 and likely cost us 0.001-0.003 BPB.
 export EMA_DECAY=0.9965                     # PR #1493 (we default to 0.997)
 export WARMDOWN_FRAC=0.72                   # PR #1493 (we default to 0.667)
 export MUON_WD=0.095                        # PR #1493 (we default to 0.085)
@@ -118,7 +125,10 @@ export USE_CUDNN_BENCHMARK=1                # +0.8% incremental (E5)
 # CMP_QUANT_VALUE_DEDUP OFF because it destroyed quant quality in retry 4 (gap 3.46).
 export MATRIX_BITS=6                        # int6 weight quant (PR #1493 proven, gap 0.012 BPB at 11L+4x)
 export EMBED_BITS=8                         # int8 embeddings (PR #1493 exact)
-export USE_CMP_QUANT_VALUE_DEDUP=0          # OFF — destroyed quant quality at this scale
+export USE_CMP_QUANT_VALUE_DEDUP=1          # ON — alphabet-snap compression to fit artifact under 16 MB.
+                                            # Retry 4 catastrophe was int8+dedup; int6+dedup should be safe.
+                                            # Retry 5 artifact was 16.05 MB (51 KB over) with dedup OFF.
+export CMP_QUANT_DEDUP_STEP=2               # standard step size
 
 # TTT — legal score-first only (matches PR #1493 exactly)
 # PR #1493 PR description: "no pre-quant TTT, no ETLB, no n-gram cache, no SLOT — fully compliant"
