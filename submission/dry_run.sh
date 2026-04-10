@@ -1,22 +1,34 @@
 #!/bin/bash
-# submission/dry_run.sh — H100 SUBMISSION DRY RUN
+# submission/dry_run.sh — H100 SUBMISSION RUN (dry run AND real submission, same code path)
 #
-# Single-command launcher for the submission-grade config we want to test on H100.
+# THE CANONICAL ENTRY POINT. This script is BOTH:
+#   - The dry run sanity check (1 seed, fast iteration on 1×H100 PCIe)
+#   - The real comp submission (3 seeds, full validation on 8×H100 SXM)
+#
+# The ONLY difference between the two is the SEEDS env var:
+#   bash submission/dry_run.sh                       # dry run (default SEEDS=42)
+#   SEEDS=42,314,999 bash submission/dry_run.sh       # real 3-seed submission
+#
+# Output: assembles a complete comp submission folder under
+#         records/track_10min_16mb/<date>_<config-tag>/
+#         with: README.md, submission.json, train_gpt.py, train_seed<N>.log
+#
 # This is the FULL stack we'd ship as a real comp record. Targets PR #1493
 # (merged leaderboard #1, val_bpb 1.0810 on 8×H100 SXM) plus our deltas:
-#   PR #1493 stack (verified from openai/parameter-golf merged PR description):
+#   PR #1493 stack (verified from openai/parameter-golf merged PR):
 #   - SP8192 vocab
 #   - 3-Layer Depth Recurrence (NUM_LOOPS=2, LOOP_START=3, LOOP_END=5)
 #   - Parallel Residuals (PR #1493 applies L7+; we apply all-layers — see notes)
 #   - QK-Gain 5.25
 #   - Legal Score-First TTT (TTT_ENABLED=1, TTT_LR=0.005, TTT_EPOCHS=3)
 #   - EMA_DECAY=0.9965, WARMDOWN_FRAC=0.72, ENABLE_LOOPING_AT=0.35
-#   - NO pre-quant TTT, NO SLOT, NO n-gram cache, NO ETLB (PR #1493 explicit)
+#   - MUON_WD=0.095, MATRIX_LR=0.022
 #   Our deltas on top:
 #   - NUM_LAYERS=6 + MLP_MULT=2 (CHAMP_D validated, val_bpb 1.39943 on 3090)
 #   - MATRIX_BITS=8 (our int8 quant breakthrough — eliminates the int6 quant gap)
 #   - USE_PARALLEL_MUON=1 (our batched Newton-Schulz speedup)
 #   - max-autotune-no-cudagraphs compile mode + cudnn.benchmark
+#   - n-gram bias stack (NIGHT_MODE wins) — NOTE: may be Track-B-illegal, verify before submit
 #   - 600s training cap, full 16 MB artifact target
 #
 # Usage on a fresh pod:
@@ -33,19 +45,32 @@ set -eu
 REPO_DIR="${REPO_DIR:-/workspace/paramgolf}"
 cd "$REPO_DIR"
 
+# === Seed selection (THE dry-run/real-submission switch) ===
+SEEDS="${SEEDS:-42}"
+IFS=',' read -ra SEED_ARRAY <<< "$SEEDS"
+NUM_SEEDS=${#SEED_ARRAY[@]}
+
+# === Records folder staging ===
+DATE_STR=$(date -u +%Y-%m-%d)
+CONFIG_TAG="SP8192_NL6_MLP2_int8_NgramBias_PR_LegalTTT"
+RECORD_NAME="${DATE_STR}_${CONFIG_TAG}"
+RECORD_DIR="records/track_10min_16mb/${RECORD_NAME}"
+mkdir -p "$RECORD_DIR"
+
 echo "============================================================"
-echo "[dry_run] SUBMISSION DRY RUN starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[dry_run] SUBMISSION RUN starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "============================================================"
+echo "  Seeds: ${SEEDS} (${NUM_SEEDS} run$([ $NUM_SEEDS -gt 1 ] && echo s || echo ''))"
 echo "  Stack: PR #1493 leaderboard #1 (1.0810) + our int8 quant + parallel muon"
-echo "         + NUM_LAYERS=6 compute-efficient + max-autotune compile"
+echo "         + NUM_LAYERS=6 compute-efficient + n-gram bias + max-autotune"
+echo "  Records folder: $RECORD_DIR"
 echo "============================================================"
 
-# === Submission-grade config ===
-export SEED=42
+# === Submission-grade config (shared across all seed runs) ===
 export MAX_WALLCLOCK_SECONDS=600
 
 # Model architecture — CHAMP_D validated config (val_bpb 1.39943 on 3090, 600s)
-export NUM_LAYERS=6                         # was 8 — reverted to CHAMP_D validated
+export NUM_LAYERS=6                         # CHAMP_D validated
 export MLP_MULT=2
 
 # PR #1493 (leaderboard #1, val_bpb 1.0810) architecture techniques (verified
@@ -93,16 +118,231 @@ export USE_NGR_LOG_FREQ_INV=1               # uses train data for sample (rule-f
 export USE_CTX_PARTITIONED_TAB=1
 export USE_PREFETCH_LOADER=1
 
-bash submission/run.sh
+# === Run each seed ===
+for THIS_SEED in "${SEED_ARRAY[@]}"; do
+    echo
+    echo "============================================================"
+    echo "[dry_run] SEED=${THIS_SEED} starting at $(date -u +%H:%M:%SZ)"
+    echo "============================================================"
+
+    export SEED="$THIS_SEED"
+    SEED_LOG="${RECORD_DIR}/train_seed${THIS_SEED}.log"
+
+    # bash submission/run.sh tees its own log to logs/run_seed*.log; we additionally
+    # capture the train.py output stream into the records folder for the comp submission
+    bash submission/run.sh 2>&1 | tee "$SEED_LOG"
+
+    echo
+    echo "[dry_run] SEED=${THIS_SEED} done. Log: $SEED_LOG"
+
+    # Capture the artifact size for this seed (the int6.ptz file is the actual submission blob)
+    if [ -f final_model.int6.ptz ]; then
+        SEED_ARTIFACT_BYTES=$(stat -c %s final_model.int6.ptz 2>/dev/null || stat -f %z final_model.int6.ptz)
+        echo "[dry_run] SEED=${THIS_SEED} artifact: ${SEED_ARTIFACT_BYTES} bytes"
+        # Save the artifact alongside the log so a 3-seed run keeps all of them
+        cp final_model.int6.ptz "${RECORD_DIR}/final_model_seed${THIS_SEED}.int6.ptz"
+    fi
+done
+
+# === Assemble submission.json + README.md from the per-seed logs ===
+echo
+echo "============================================================"
+echo "[dry_run] Assembling records folder $(date -u +%H:%M:%SZ)"
+echo "============================================================"
+
+python3 - <<PYEOF
+import json, re, os, statistics
+from pathlib import Path
+
+record_dir = Path("$RECORD_DIR")
+seeds = "$SEEDS".split(",")
+record_name = "$RECORD_NAME"
+date_str = "$DATE_STR"
+
+# Parse each seed log for the final quantized_ttt val_bpb (the submission number)
+# Falls back to quantized_sliding_window then quantized if TTT wasn't enabled.
+seed_results = {}
+for seed in seeds:
+    log_path = record_dir / f"train_seed{seed}.log"
+    if not log_path.exists():
+        print(f"  WARN: missing {log_path}")
+        continue
+    text = log_path.read_text(errors="replace")
+    # Match the lines train.py emits via timed_eval(label, ...):
+    #   quantized val_loss:X val_bpb:X eval_time:Xms
+    #   quantized_sliding_window val_loss:X val_bpb:X eval_time:Xms
+    #   quantized_ttt val_loss:X val_bpb:X eval_time:Xms
+    rx = re.compile(r"^(quantized|quantized_sliding_window|quantized_ttt) val_loss:([\d.]+) val_bpb:([\d.]+) eval_time:(\d+)ms", re.M)
+    matches = {m.group(1): (float(m.group(2)), float(m.group(3)), int(m.group(4))) for m in rx.finditer(text)}
+    # Pick the best available metric, in order of preference
+    if "quantized_ttt" in matches:
+        primary_label = "quantized_ttt"
+    elif "quantized_sliding_window" in matches:
+        primary_label = "quantized_sliding_window"
+    elif "quantized" in matches:
+        primary_label = "quantized"
+    else:
+        print(f"  WARN: no quantized val_bpb in {log_path}")
+        continue
+    val_loss, val_bpb, eval_time_ms = matches[primary_label]
+    artifact_path = record_dir / f"final_model_seed{seed}.int6.ptz"
+    artifact_bytes = artifact_path.stat().st_size if artifact_path.exists() else None
+    seed_results[seed] = {
+        "primary_label": primary_label,
+        "val_loss": val_loss,
+        "val_bpb": val_bpb,
+        "eval_time_ms": eval_time_ms,
+        "artifact_bytes": artifact_bytes,
+        "all_metrics": {label: {"val_loss": vl, "val_bpb": vb, "eval_time_ms": et}
+                         for label, (vl, vb, et) in matches.items()},
+    }
+
+# Compute mean + std across seeds
+val_bpbs = [r["val_bpb"] for r in seed_results.values()]
+if val_bpbs:
+    mean_bpb = sum(val_bpbs) / len(val_bpbs)
+    std_bpb = statistics.stdev(val_bpbs) if len(val_bpbs) > 1 else 0.0
+else:
+    mean_bpb = std_bpb = float("nan")
+
+# Detect hardware (best effort)
+hw = "unknown"
+try:
+    import subprocess
+    out = subprocess.check_output(["nvidia-smi", "--query-gpu=name,count", "--format=csv,noheader"], text=True).strip().split("\n")
+    if out:
+        gpu_name = out[0].split(",")[0].strip()
+        gpu_count = len(out)
+        hw = f"{gpu_count}x{gpu_name}"
+except Exception:
+    pass
+
+submission = {
+    "author": os.environ.get("SUBMISSION_AUTHOR", "taka6745"),
+    "github_id": os.environ.get("SUBMISSION_GITHUB_ID", "taka6745"),
+    "name": "SP8192 + NL6 MLP2 int8 + Parallel Muon + N-gram Bias + Parallel Residuals + Legal TTT",
+    "date": date_str,
+    "track": "10min_16mb",
+    "val_bpb": round(mean_bpb, 5),
+    "val_bpb_std": round(std_bpb, 5),
+    "seeds": [int(s) for s in seeds if s in seed_results],
+    "seed_results": {
+        s: {"val_bpb": round(r["val_bpb"], 5), "artifact_bytes": r["artifact_bytes"]}
+        for s, r in seed_results.items()
+    },
+    "hardware": hw,
+    "technique_summary": (
+        "SP8192 + NUM_LAYERS=6 + MLP_MULT=2 + 3-Layer Depth Recurrence (L3-5) "
+        "+ Parallel Residuals (all layers) + QK-Gain 5.25 + EMA 0.9965 + WD 0.095 "
+        "+ MATRIX_BITS=8 (int8 weights) + Parallel Muon + N-gram Bias Stack "
+        "+ Score-First TTT (SGD 3ep) + GPTQ + Brotli"
+    ),
+    "compliance": {
+        "train_under_600s": True,  # MAX_WALLCLOCK_SECONDS=600
+        "artifact_under_16mb": all((r["artifact_bytes"] or 0) < 16_000_000 for r in seed_results.values()),
+        "eval_under_600s": all(sum(m["eval_time_ms"] for m in r["all_metrics"].values()) < 600_000 for r in seed_results.values()),
+        "no_slot": True,
+        "no_pre_quant_ttt": True,         # PREQUANT_TTT_ENABLED=0
+        "no_etlb": True,
+        "no_ngram_cache": False,           # WE USE NGRAM_BIAS — flag honestly
+        "score_first_ttt": True,
+        "three_seeds": len(seeds) >= 3,
+    },
+    "attribution": {
+        "sp8192_gptq_sdclip": "@clarkkev (PR #1394)",
+        "depth_recurrence": "@dexhunter (PR #1331, #1437)",
+        "parallel_residuals": "@Robby955 (PR #1412), @msisovic (PR #1204)",
+        "legal_ttt_framework": "@abaybektursun (PR #549), @dexhunter (PR #1413)",
+        "hyperparameter_tuning_pr1493": "@bigbag (PR #1493)",
+        "int8_quant_smaller_model": "@taka6745 (this submission, CHAMP_D discovery)",
+    },
+}
+
+(record_dir / "submission.json").write_text(json.dumps(submission, indent=2))
+
+# README.md (templated)
+seeds_table = "\n".join(
+    f"| {s} | **{r['val_bpb']:.4f}** | {r['artifact_bytes'] or 'N/A'} |"
+    for s, r in seed_results.items()
+)
+readme = f"""# Record: SP8192 + NL6 MLP2 int8 + Parallel Muon + N-gram Bias + Legal TTT
+
+**val_bpb = {mean_bpb:.4f}** ({len(val_bpbs)}-seed mean, std {std_bpb:.4f}) | **{hw}**
+
+## Per-seed Results
+
+| Seed | val_bpb (quantized_ttt) | Artifact Bytes |
+|------|-------------------------|----------------|
+{seeds_table}
+
+## Key Techniques
+
+1. **NUM_LAYERS=6 + MLP_MULT=2** — compute-efficient architecture (CHAMP_D), validated val_bpb 1.39943 on RTX 3090
+2. **MATRIX_BITS=8** — int8 weight quantization (eliminates the int6 quant gap on converged smaller models)
+3. **3-Layer Depth Recurrence** (L3-5, activate at frac=0.35) — from PR #1331/#1437
+4. **Parallel Residuals (all layers)** — more aggressive than PR #1493's L7+ pattern, bet on smaller-model expressivity
+5. **QK-Gain 5.25 + EMA 0.9965 + WD 0.095 + warmdown 0.72** — PR #1493 (@bigbag) hyperparameters
+6. **Parallel Muon** — batched Newton-Schulz across same-shape parameters
+7. **N-gram Bias Stack** — bigram/trigram/fourgram with backoff, hash buckets, NLFI, ctx-partitioned (NIGHT_MODE)
+8. **Legal Score-First TTT** — SGD (lr=0.005, mom=0.9), 3 epochs per chunk, cosine LR decay
+9. **GPTQ + Brotli** — int8 matrices + int8 embeddings + brotli compression
+10. **max-autotune-no-cudagraphs torch.compile + cudnn.benchmark**
+
+## Compliance
+
+```json
+{json.dumps(submission["compliance"], indent=2)}
+```
+
+**NOTE on n-gram bias**: this submission uses precomputed n-gram log-prob tables as a logit bias.
+Issue #1017 Track B (legal eval-time adaptation) Condition 2 says "no n-gram cache, no logit biasing."
+We flag `no_ngram_cache: false` honestly. Whether this is comp-legal under Track A or any other
+track is an open question that needs to be resolved before merging this as a record.
+
+## Reproduction
+
+```bash
+# Default: 1-seed dry run on 1xH100 PCIe
+bash submission/bootstrap.sh
+bash submission/dry_run.sh
+
+# Real 3-seed submission on 8xH100 SXM
+SEEDS=42,314,999 bash submission/dry_run.sh
+```
+
+## Attribution
+
+{chr(10).join(f"- **{k}**: {v}" for k, v in submission["attribution"].items())}
+"""
+(record_dir / "README.md").write_text(readme)
+
+print(f"  wrote {record_dir}/submission.json")
+print(f"  wrote {record_dir}/README.md")
+print(f"  per-seed logs: train_seed{{{','.join(seeds)}}}.log")
+print()
+print(f"  MEAN val_bpb: {mean_bpb:.5f}  (std {std_bpb:.5f}, {len(val_bpbs)} seed(s))")
+PYEOF
+
+# Copy train.py as train_gpt.py for the records folder (per comp convention).
+# Note: PR #1493 LZMA-wraps theirs to fit code-size. We don't yet — that's a
+# follow-up if/when we're closing in on the code-size limit.
+cp submission/train.py "$RECORD_DIR/train_gpt.py"
+echo "  copied submission/train.py -> $RECORD_DIR/train_gpt.py"
 
 echo
 echo "============================================================"
 echo "[dry_run] DONE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "============================================================"
-echo "Submission val_bpb candidates (use the LAST one for the PR):"
+echo "Records folder: $RECORD_DIR"
+echo "Contents:"
+ls -la "$RECORD_DIR"
+echo
+echo "Submission val_bpb candidates (use quantized_ttt for the PR):"
 echo "  - quantized val_bpb         (no TTT)"
 echo "  - quantized_sliding_window  (sliding eval, no TTT)"
-echo "  - legal_ttt_exact val_bpb   (legal score-first TTT — THIS IS THE SUBMISSION NUMBER)"
+echo "  - quantized_ttt val_bpb     (legal score-first TTT — THIS IS THE SUBMISSION NUMBER)"
 echo
-grep -E "^(quantized|legal_ttt_exact|quantized_sliding_window)" /tmp/paramgolf_bootstrap.log 2>/dev/null || \
-  grep -E "val_bpb" /tmp/paramgolf_bootstrap.log 2>/dev/null | tail -15
+for THIS_SEED in "${SEED_ARRAY[@]}"; do
+    echo "=== seed $THIS_SEED ==="
+    grep -E "^(quantized|quantized_sliding_window|quantized_ttt) val_loss:" "$RECORD_DIR/train_seed${THIS_SEED}.log" 2>/dev/null || echo "  (no quantized lines in log)"
+done
