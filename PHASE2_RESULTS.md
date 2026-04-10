@@ -224,13 +224,17 @@ Phase 1 hit 180 steps in 600s because:
 
 **Per-GPU rate**: 0.31 steps/sec (vs comp records' 4.17 steps/sec/GPU = ~13× slower).
 
-## Comp anchors (the target)
+## Comp anchors (the target — verified against actual merged leaderboard 2026-04-10)
 
-| PR | stack | val_bpb | hardware |
-|---|---|---|---|
-| #1485 | 1477 + 3L recurrence + Pre-Quant AdamW TTT + EMA 0.9965 + QK5 | **1.0679** | 8×H100 SXM |
-| #1477 | SP8192 + Parallel Residuals + Score-First TTT | 1.0822 | 8×H100 SXM |
-| #1482 | SP8192 + Pre-Quant TTT QK 5.25 8ep freeze-1 | 1.0787 | 8×H100 SXM |
+| PR | stack | val_bpb | hardware | merged |
+|---|---|---|---|---|
+| **#1493** | SP8192 + 3L recurrence + Parallel Residuals (L7+) + QK 5.25 + Legal TTT + EMA 0.9965 + WD 0.095 + warmdown 0.72 | **1.0810** | 8×H100 SXM | ✅ 2026-04-09 (leaderboard #1) |
+| #1477 | SP8192 + Parallel Residuals + Score-First TTT | 1.0822 | 8×H100 SXM | ✅ |
+| #1413 | SP8192 + QK-Gain 5 + Legal Score-First TTT | 1.0828 | 8×H100 SXM | ✅ |
+| #1412 | SP8192 + Parallel Residuals + Hessian-Aware SDClip | 1.0835 | 8×H100 SXM | ✅ |
+| #1394 | SP8192 + GPTQ Embeddings + Depth Recurrence + SDClip | 1.0856 | 8×H100 SXM | ✅ (Kevin Clark base) |
+
+**WARNING**: prior versions of this section cited PR #1485 (1.0679) and PR #1482 (1.0787) as comp anchors. Those PRs are NOT in the merged leaderboard — they were open/rejected PRs whose self-reported numbers got mistakenly recorded here as merged anchors. **Do not chase those numbers.** The actual merged top is PR #1493 at 1.0810. PR #1493 explicitly says "no pre-quant TTT, no ETLB, no n-gram cache, no SLOT — fully compliant" — so the "Pre-Quant AdamW TTT" technique is **not in any merged PR**.
 
 **Phase 2 target on 1×H100 SXM**: val_bpb in the **1.10-1.18 range** (within 0.10 of comp records). Won't match 8× because we're 1/8 the raw compute, but we should close most of the gap relative to the 8× vs 1× ratio once the code path is optimized.
 
