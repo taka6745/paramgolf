@@ -77,3 +77,4 @@ The cron will pull this folder back to the local repo when all 3 seeds complete.
 | 03:25 | KILL + FIX | Killed retry 4. Switched to MATRIX_BITS=6 + EMBED_BITS=8 (PR #1493 exact quant). CMP_QUANT_VALUE_DEDUP=0. Added all env vars to run.sh explicit list. Commit ff545ac. |
 | 03:32 | RETRY 5 launch | PID 3908527. int6 quant fix. All previous fixes preserved (torchrun, FA3, torch.compile). |
 | 03:35 | 🔥 **TRAINING SEED 42** | **Step 120, train_loss 4.20, tok/s 7,547,349**. ALL 8 GPUs at 99%, 42 GB each. int6 quant (lower memory than retry 4's int8 43 GB). Compile cache warm from retry 4. Spend ~$38. |
+| 03:44 | 🔥 **SEED 42 TRAIN ENDING** | **Step 4380, train_loss 2.87, tok/s 5.96M, train_time 9.6 min** (budget 9.8 min). About to hit wallclock cap. Near-identical trajectory to retry 4 (step 4420 = 2.83). **Int6 GPTQ + eval phase starts now.** Spend ~$41. |
