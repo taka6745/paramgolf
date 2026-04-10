@@ -62,3 +62,4 @@ The cron will pull this folder back to the local repo when all 3 seeds complete.
 | 01:43 | bootstrap fail | get_data.sh Step 0 cp failed (mkdir bug). Submission process died. Cost ~$1.40. |
 | 01:46:27 | retry 2 launch | Fixed via commit 91d7777, relaunched as PID 1467 |
 | 01:57 | bootstrap-data | Tokenize **21% done** (3.2M / 15.4M docs, 35 train shards written). SP cached ✓, 48 GB docs hardlinked ✓. ETA tokenize complete ~02:35-02:45Z. Spend ~$3.94. |
+| 02:04 | bootstrap-data | Tokenize **41.6% done** (6.4M / 15.4M docs, **62 train shards**). Pace ~2.3%/min. ETA tokenize complete **~02:30Z**, n-gram ~02:33, training seed 42 start **~02:35Z**. Spend ~$6.46. |
