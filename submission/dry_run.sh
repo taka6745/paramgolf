@@ -109,14 +109,19 @@ export TTT_FREEZE_BLOCKS=0
 export SLIDING_WINDOW_ENABLED=1             # full sliding eval
 
 # Standard Phase 1 wins (already defaulted in run.sh, declared here for clarity)
-export USE_GATED_ATTENTION=1
-export USE_NORMUON=1
-export USE_NORM_PCT_DROPOUT=1
-export USE_NGRAM_BIAS=1
-export USE_NGRAM_BACKOFF=1
-export USE_NGR_LOG_FREQ_INV=1               # uses train data for sample (rule-fix in commit 4b16703)
-export USE_CTX_PARTITIONED_TAB=1
-export USE_PREFETCH_LOADER=1
+# IMPORTANT: n-gram bias stack DISABLED for this submission. Issue #1017 Track B
+# Condition 2 says "Standard softmax over full vocab. No n-gram cache, no logit
+# biasing." We do not yet know whether this rule applies only to Track B
+# (legal-eval-time-adaptation track) or to all submissions. Until verified, we
+# do not use n-gram bias features in submission runs.
+export USE_GATED_ATTENTION=1                # per-head sigmoid gate over attn output (NeurIPS 2025) — architectural, legal
+export USE_NORMUON=1                         # per-row normalize after Newton-Schulz — optimizer variant, legal
+export USE_NORM_PCT_DROPOUT=1                # zero top 1% L2-norm rows of FFN intermediate (training-time regularizer) — legal
+export USE_NGRAM_BIAS=0                      # DISABLED — possible Issue #1017 Track B violation
+export USE_NGRAM_BACKOFF=0                   # DISABLED (n-gram bias is off)
+export USE_NGR_LOG_FREQ_INV=0                # DISABLED (n-gram bias is off)
+export USE_CTX_PARTITIONED_TAB=0             # DISABLED (n-gram bias is off)
+export USE_PREFETCH_LOADER=1                 # data loader optimization — legal
 
 # === Run each seed ===
 for THIS_SEED in "${SEED_ARRAY[@]}"; do
@@ -323,11 +328,41 @@ print()
 print(f"  MEAN val_bpb: {mean_bpb:.5f}  (std {std_bpb:.5f}, {len(val_bpbs)} seed(s))")
 PYEOF
 
-# Copy train.py as train_gpt.py for the records folder (per comp convention).
-# Note: PR #1493 LZMA-wraps theirs to fit code-size. We don't yet — that's a
-# follow-up if/when we're closing in on the code-size limit.
-cp submission/train.py "$RECORD_DIR/train_gpt.py"
-echo "  copied submission/train.py -> $RECORD_DIR/train_gpt.py"
+# LZMA-wrap train.py as train_gpt.py for the records folder (matches PR #1493
+# format: 2-line script that decompresses + execs the original). This keeps the
+# code-size footprint small for comp compliance.
+python3 - <<PYEOF
+import lzma, base64
+from pathlib import Path
+src_path = Path("submission/train.py")
+src = src_path.read_text(encoding="utf-8")
+# Use LZMA2 raw (no container) — same format as PR #1493's wrapper
+compressed = lzma.compress(
+    src.encode("utf-8"),
+    format=lzma.FORMAT_RAW,
+    filters=[{"id": lzma.FILTER_LZMA2, "preset": 9 | lzma.PRESET_EXTREME}],
+)
+encoded = base64.b85encode(compressed).decode("ascii")
+wrapped = (
+    'import lzma as L,base64 as B\n'
+    f'exec(L.decompress(B.b85decode("{encoded}"),format=L.FORMAT_RAW,filters=[{{"id":L.FILTER_LZMA2}}]))'
+)
+out_path = Path("$RECORD_DIR") / "train_gpt.py"
+out_path.write_text(wrapped, encoding="utf-8")
+src_bytes = len(src.encode("utf-8"))
+wrapped_bytes = len(wrapped.encode("utf-8"))
+print(f"  LZMA-wrapped submission/train.py -> $RECORD_DIR/train_gpt.py")
+print(f"    raw:     {src_bytes:>8d} bytes")
+print(f"    wrapped: {wrapped_bytes:>8d} bytes ({100*wrapped_bytes/src_bytes:.1f}% of raw)")
+# Sanity-decode to make sure the wrapper actually round-trips
+roundtrip = lzma.decompress(
+    base64.b85decode(encoded),
+    format=lzma.FORMAT_RAW,
+    filters=[{"id": lzma.FILTER_LZMA2}],
+).decode("utf-8")
+assert roundtrip == src, "LZMA wrap roundtrip mismatch — wrapper is broken"
+print(f"    roundtrip OK ({len(roundtrip)} chars match source)")
+PYEOF
 
 echo
 echo "============================================================"
