@@ -25,10 +25,20 @@ DOCS_SYMLINK="data/datasets/docs_selected.jsonl"
 
 SP_MODEL_SRC=/root/sp_models/fineweb_8192_bpe.model
 SP_MODEL_REPO="data/tokenizers/fineweb_8192_bpe.model"
+SP_MODEL_CACHED="submission/cached/fineweb_8192_bpe.model"
 
 SHARDS_DIR="data/datasets/datasets/fineweb10B_sp8192"
 
 mkdir -p "$DATA_BIG" /root/sp_models data/datasets/tokenizers data/datasets/datasets
+
+# === Step 0: seed cached SP-8192 model from git if present (saves 60-90 min on fresh pods) ===
+# The committed cached model lives at submission/cached/fineweb_8192_bpe.model.
+# Copy it into the runtime tokenizer path so the existing reuse logic at Step 3
+# below picks it up. Skipped if a runtime model is already in place.
+if [ -f "$SP_MODEL_CACHED" ] && [ ! -f "$SP_MODEL_REPO" ]; then
+    echo "[get_data] seeding cached SP-8192 model from $SP_MODEL_CACHED (skips ~60 min rebuild)"
+    cp "$SP_MODEL_CACHED" "$SP_MODEL_REPO"
+fi
 
 # === SHORT-CIRCUIT: tokenize already done? ===
 if [ -d "$SHARDS_DIR" ] && [ "$(ls "$SHARDS_DIR"/fineweb_train_*.bin 2>/dev/null | wc -l)" -ge 100 ]; then
