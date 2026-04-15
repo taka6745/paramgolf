@@ -2711,3 +2711,8 @@ All 18 IDEAs now approved or in-experiment. Queue fully ready when pod unblocks.
 
 0/0%/0.
 
+
+## 2026-04-16T19:37Z — Loop B fire 17: still blocked
+
+0/0%/0.
+
