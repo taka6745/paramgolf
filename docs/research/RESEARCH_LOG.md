@@ -2779,3 +2779,8 @@ Total IDEAs: 20. Status=draft; audit next fire.
 
 0/0%/0.
 
+
+## 2026-04-16T20:44Z — Loop A fire 15: IDEA-020 audited → partial-overlap-with-Infini-gram
+
+Explore subagent: Infini-gram (COLM 2024) uses suffix arrays for longest-match with neural LM interpolation, but OFFLINE on a static corpus. IDEA-020's online+causal+eval-time twist is novel — Infini-gram's method validated as useful, this applies it within comp's causal-scoring rule. Promoted draft → audited.
+

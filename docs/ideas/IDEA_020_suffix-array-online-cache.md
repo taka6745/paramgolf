@@ -3,7 +3,7 @@ id: IDEA-020
 slug: suffix-array-online-cache
 created: 2026-04-16
 updated: 2026-04-16
-status: draft
+status: audited
 layer: L09
 novelty_class: WN
 expected_bpb: [-0.020, -0.005]
@@ -12,7 +12,7 @@ depends_on: []
 blocks: []
 supersedes: []
 stack_row: STACK_NOVELTY_TRACKER_v2.md#l09-suffix-array-bwt-based-lookup
-prior_art_checked: null
+prior_art_checked: 2026-04-16
 next_step: prior-art-audit-then-prototype
 ---
 
@@ -72,12 +72,14 @@ Kill if val_bpb ≥ 1.080 at 2 seeds (less than 0.002 improvement — SA overhea
 
 ## Prior-art audit
 
-_To be filled by next Loop A fire with Explore subagent._
+Audited 2026-04-16 by Loop A fire 15 (Explore subagent).
 
-- **Arxiv**: search "suffix array online language model", "longest-match n-gram prediction", "suffix tree transformer mixture"
-- **Comp PRs**: grep for `suffix`, `longest-match`, `BWT`, `bwt` in comp PR titles
-- **Verdict**: TBD; suffix arrays for LM prediction are classical (see Carbonell 1994 statistical MT) but eval-time online + transformer hedge is likely novel
-- **Checked by**: _pending_
+- **Arxiv**:
+  - **"Infini-gram: Scaling Unbounded n-gram Language Models to a Trillion Tokens"** (Liu et al. Jan 2024, COLM 2024, arxiv 2401.17377) — **close match**. Builds ∞-gram LM using suffix array indices on 5T tokens, longest-match retrieval at ms latency, interpolation with neural LM. **But: Infini-gram is OFFLINE** (static suffix array on fixed corpus); IDEA-020 is ONLINE (grows SA on val stream, causal per comp rules).
+  - "SuffixDecoding" (NeurIPS 2025, arxiv 2411.04975) — suffix trees for speculative decoding; not for prediction/scoring.
+- **Comp PRs** (openai/parameter-golf): none mention `suffix`, `BWT`, `longest-match` in titles. parameter-golf already ships IDEA-012 (hash), IDEA-019 (CTW tree), n-gram bias tables. Suffix-array cache is new.
+- **Verdict**: **partial-overlap-with-Infini-gram + novel online-causal twist**. Infini-gram validates the long-match-from-suffix-array idea as useful; the novel step is making it **online + causal + transformer-hedged at eval time**, which nobody has shipped.
+- **Checked by**: claude 2026-04-16
 
 ## Lineage
 
