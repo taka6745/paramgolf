@@ -2926,3 +2926,8 @@ Total IDEAs: 23. Status=draft; audit next fire.
 
 0/0%/0.
 
+
+## 2026-04-16T23:00Z — Loop B fire 42: still blocked
+
+0/0%/0.
+
