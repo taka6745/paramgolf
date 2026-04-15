@@ -2853,3 +2853,12 @@ TensorGPT (TT on embeddings, uniform quant) + Tender (TT co-design, activation f
 
 0/0%/0.
 
+
+## 2026-04-16T22:00Z — Loop A fire 20: wrote IDEA-022 (Bayesian TTT averaging, L06 WN)
+
+Wrap existing Score-First TTT to snapshot K inner-SGD weights, weight each by held-out log-lik, ensemble predictions. 0 bytes artifact impact, ~3× eval wallclock. Expected [-0.012, -0.003]. Cost 2h.
+
+Stacks with IDEA-017 (MAML) — MAML gives better snapshots, BMA ensembles them.
+
+Total IDEAs: 22. Status=draft; audit next fire.
+
