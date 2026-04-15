@@ -2615,3 +2615,8 @@ Not running this autonomously because memory rule `feedback_no_h100.md` says to 
 
 Time check: we're ~1h into the autonomous session of 7h planned. If user wakes in 4-5h, we've burned ~$15 idle. Acceptable loss.
 
+
+## 2026-04-16T17:56Z — Loop B fire 6: still blocked (no change since 17:01Z)
+
+0 procs / 0% GPU / 0 shards / newest log 17:01Z fetch_sp8192 error. 6 fires blocked. Pod burn ~$0.90 so far. Recovery script at `scripts/recreate_h100_100gb.sh` ready for user.
+
