@@ -2541,3 +2541,13 @@ Pod's `/workspace/paramgolf/data/datasets/datasets/fineweb10B_sp8192/` is missin
 
 EXP-001 status: `pending` blocked_on=data-download-get_data.sh until shards present.
 
+
+## 2026-04-16T17:02Z — Loop A fire 1: wrote IDEA-014 (arithmetic-coding loss, L06 WN) + IDEA-015 (rare-token active sampling, L02 WN)
+
+Both probe-informed from STACK_UTILISATION_RESULTS.md:
+- IDEA-014 draws on P2 embed-entropy slack (4.72 bits/8-bit alloc = 41% Shannon waste) and the cross-entropy-vs-compression mismatch. Expected [-0.025, -0.010].
+- IDEA-015 draws on P7 per-bucket loss (tail-50% = 2.26× top-5%). Expected [-0.015, -0.005].
+
+Covered L02 + L06 grid cells that were empty before. Both status=draft awaiting prior-art audit (next Loop A fire per decision tree).
+Total IDEAs: 15.
+
