@@ -3,7 +3,7 @@ id: IDEA-020
 slug: suffix-array-online-cache
 created: 2026-04-16
 updated: 2026-04-16
-status: audited
+status: approved
 layer: L09
 novelty_class: WN
 expected_bpb: [-0.020, -0.005]
