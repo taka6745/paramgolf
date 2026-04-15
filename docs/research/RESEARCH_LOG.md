@@ -2745,3 +2745,8 @@ Subagent: no arxiv / comp PR combines CTW with modern transformer LM. cmix prece
 
 0/0%/0.
 
+
+## 2026-04-16T20:07Z — Loop B fire 21: still blocked
+
+0/0%/0.
+
