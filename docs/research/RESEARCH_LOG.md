@@ -3037,3 +3037,26 @@ FlexQ (Aug 2025) does int6 pre-dequant. FireQ (May 2025) does int4 in-matmul. Ou
 
 0/0%/0.
 
+
+## 2026-04-17T00:59Z — Loop A fire 32: IDLE (diminishing returns)
+
+25 IDEAs approved, covering all 11 layers + cross-layer moonshot. Full distribution:
+- L01: IDEA-013 Huffman tokenizer (WN)
+- L02: IDEA-015 rare-token active sampling (WN)
+- L03: IDEA-001 drop-gated-attn, 002 QK-Gain port, 007 DEQ retest, 008 Hymba retest, 010 wavelet verify (5 ideas)
+- L04: IDEA-018 CMA-ES rare-token (WN)
+- L05: IDEA-003 EMA port, 004 Pre-Quant TTT port, 024 contrastive pretraining (3 ideas)
+- L06: IDEA-009 N-gram Tilt, 022 Bayesian TTT averaging (2 WN)
+- L07: IDEA-005, 011, 021, 023 (4 competitors for reclaim-respend slot)
+- L08: IDEA-006 BigramHash port
+- L09: IDEA-019 CTW, 020 SA cache (2 WN)
+- L10: IDEA-017 MAML TTT init (WN)
+- L11: IDEA-016 megakernel, 025 int6 bitpack (2 WN)
+- cross-layer: IDEA-012 moonshot online cache (WN, largest ceiling)
+
+**Net novelty**: ~14 WN + 6 CP + 5 comp-ports + 1 hybrid. Strong portfolio.
+
+**Pod-blocked since 17:08Z** (~8 hours). 55 Loop B fires have confirmed idle. Without experiments, adding more ideas doesn't produce new evidence — just enlarges a queue that already covers the protocol grid. Pausing Loop A idea-generation. Will resume if user unblocks pod or if new literature / probe signal justifies a specific idea.
+
+Loop A remains armed via cron; next fire can resume writing new ideas OR periodic re-audit of older approved IDEAs against latest comp PRs. For now: idle.
+
