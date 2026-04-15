@@ -2946,3 +2946,10 @@ Total IDEAs: 23. Status=draft; audit next fire.
 
 0/0%/0.
 
+
+## 2026-04-16T23:22Z — Loop A fire 26: wrote IDEA-024 (contrastive pretraining phase, L05 WN)
+
+30s InfoNCE contrastive phase before 570s CE training. Disposable projection head. Expected [-0.010, -0.003]. Cost 3h.
+
+Total IDEAs: 24. Status=draft; audit next fire. L05 covers contrastive pretraining + EMA port + Pre-Quant TTT + Norm-PCT-Dropout now.
+
