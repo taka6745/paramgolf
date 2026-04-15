@@ -3,7 +3,7 @@ id: IDEA-021
 slug: tensor-train-mixed-cores
 created: 2026-04-16
 updated: 2026-04-16
-status: audited
+status: approved
 layer: L07
 novelty_class: WN
 expected_bpb: [-0.020, -0.005]
