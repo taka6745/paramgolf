@@ -2587,3 +2587,8 @@ Spawned Explore subagent for arxiv + comp-PR prior-art check on both new ideas:
 
 Both frontmatter updated with prior_art_checked=2026-04-16 and full audit sections populated. Next Loop A fires can promote audited → approved after writing falsifiability sections (already present in both).
 
+
+## 2026-04-16T17:23Z — Loop B fire 3: still blocked
+
+Pod: IDLE (GPU 0%). Disk: 60 GB free (JSONL cleanup held). Shards: 0. No user resolution of the disk-config issue yet. No action — awaiting user decision between [recreate pod / fall back to sp1024 / patch for fewer shards]. Crons still live; Loop A continues doing research-doc work independently. Burning ~$0.35/hr on idle H100 — user may want to decide quickly.
+
