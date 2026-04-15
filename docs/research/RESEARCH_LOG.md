@@ -2769,3 +2769,8 @@ Three-way cache bake-off is the valuable experiment design: best of {hash, CTW, 
 
 Total IDEAs: 20. Status=draft; audit next fire.
 
+
+## 2026-04-16T20:30Z — Loop B fire 23: still blocked
+
+0/0%/0.
+
