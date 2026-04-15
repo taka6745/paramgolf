@@ -3022,3 +3022,8 @@ FlexQ (Aug 2025) does int6 pre-dequant. FireQ (May 2025) does int4 in-matmul. Ou
 
 0/0%/0.
 
+
+## 2026-04-17T00:44Z — Loop A fire 31: IDEA-025 audited → approved
+
+25 IDEAs total, all approved or in-experiment. L11 now has 2 ideas (016 megakernel + 025 int6 bitpack). Queue diversified across all layers.
+

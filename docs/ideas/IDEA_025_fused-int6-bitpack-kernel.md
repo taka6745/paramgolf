@@ -3,7 +3,7 @@ id: IDEA-025
 slug: fused-int6-bitpack-kernel
 created: 2026-04-16
 updated: 2026-04-16
-status: audited
+status: approved
 layer: L11
 novelty_class: WN
 expected_bpb: [-0.005, -0.001]
