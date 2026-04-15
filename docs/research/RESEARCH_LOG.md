@@ -2911,3 +2911,8 @@ Competes with IDEA-005/011/021 for L07 slot — pick the one that reclaims most 
 
 Total IDEAs: 23. Status=draft; audit next fire.
 
+
+## 2026-04-16T22:45Z — Loop B fire 40: still blocked
+
+0/0%/0.
+
