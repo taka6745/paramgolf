@@ -3060,3 +3060,83 @@ FlexQ (Aug 2025) does int6 pre-dequant. FireQ (May 2025) does int4 in-matmul. Ou
 
 Loop A remains armed via cron; next fire can resume writing new ideas OR periodic re-audit of older approved IDEAs against latest comp PRs. For now: idle.
 
+
+---
+
+## 2026-04-17 10:00 AEST (00:00Z) — Autonomous session ENDS (kill-switch fire)
+
+**Duration**: ~8h 10min (from 2026-04-16T16:30Z session start to 2026-04-17T00:55Z teardown)
+**H100 cost**: $2.99/hr × ~16h total pod-life (from 2026-04-15 13:05Z probe session through 2026-04-17 teardown) = **~$48 total**. Autonomous-loop idle portion alone ≈ $24.
+**Crons**: Loop A (13-min, 32 fires) + Loop B (7-min, 55 fires) both cancelled. Kill-switch one-shot executing now.
+
+### Counts
+- 25 IDEA docs created (+12 starter + 13 via Loop A protocol)
+- 1 EXP doc (EXP-2026-04-16-001, status pending — never ran due to pod disk config)
+- 0 FINDING docs — no experimental results to publish
+- 11 Loop A fires wrote+audited new IDEAs; 1 ended idle; ~20 promotions draft→audited→approved
+
+### What we shipped (new FINDINGs): NONE
+The pod disk-config blocker prevented EVERY experiment from running. Data download (`submission/get_data.sh`) aborted at step 4 (`/workspace` headroom check) because the pod was created with 60 GB container / 0 GB volume when submission/README requires 100 GB + 50 GB. The 48 GB docs_selected.jsonl + 24 GB of tokenized shards exceeded the 60 GB container disk.
+
+Loop B fired 55 times over ~8 hours; all confirmed pod idle / 0 shards / blocked. Recovery path (`scripts/recreate_h100_100gb.sh`) is staged for next session — one command to destroy + recreate with correct disk config.
+
+### What we validated: NONE
+Same reason — no experiments.
+
+### What we killed: NONE (no experiments ran)
+
+But one IDEA was **reclassified** during prior-art audit:
+- **IDEA-023 (sigma-delta quantization)**: demoted WN → CP. SDQ-LLM (arxiv 2510.03275, Sep 2025) is direct prior art. Kept in queue as comp-port since no comp PR ships it.
+
+### What's queued (all 25 approved or in-experiment)
+
+By expected BPB center:
+1. **IDEA-012** online n-gram cache moonshot: [-0.15, -0.05] (WN, cross-layer)
+2. **IDEA-007** DEQ+Scylla retest: [-0.05, -0.01] (CN, L03)
+3. **IDEA-019** CTW standalone: [-0.03, -0.008] (WN, L09)
+4. **IDEA-021** tensor-train mixed cores: [-0.02, -0.005] (WN, L07)
+5. **IDEA-020** suffix-array online cache: [-0.02, -0.005] (WN, L09)
+6. **IDEA-008** Hymba retest: [-0.02, -0.005] (CN, L03)
+7. **IDEA-013** Huffman tokenizer: [-0.02, -0.005] (WN, L01)
+8. **IDEA-004** Pre-Quant AdamW TTT port: [-0.016, -0.010] (CP, L05, biggest-known-delta)
+9. **IDEA-018** CMA-ES rare-token: [-0.015, -0.005] (WN, L04)
+10. **IDEA-017** MAML TTT init: [-0.015, -0.005] (WN, L10)
+11. **IDEA-015** rare-token active sampling: [-0.015, -0.005] (WN, L02)
+12. **IDEA-001** drop gated attention: [-0.012, -0.008] (CN, L03) — **hard P15 evidence**
+13. **IDEA-022** Bayesian TTT averaging: [-0.012, -0.003] (WN, L06)
+14. **IDEA-023** sigma-delta quant: [-0.012, -0.002] (CP, L07)
+15. **IDEA-011** embed int8→int6: [-0.01, -0.002] (WN, L07)
+16. **IDEA-024** contrastive pretraining: [-0.010, -0.003] (WN, L05)
+17. **IDEA-016** fused megakernel: [-0.008, -0.002] (WN, L11)
+18. **IDEA-009** n-gram Tilt multiplicative: [-0.006, -0.003] (WN, L06)
+19. **IDEA-002** QK-Gain 5.25 port: [-0.005, -0.002] (CP, L03)
+20. **IDEA-025** int6 bit-pack kernel: [-0.005, -0.001] (WN, L11)
+21. **IDEA-010** Wavelet GPT verify: [-0.005, +0.005] (WN, L03)
+22. **IDEA-003** EMA 0.9965 port: [-0.003, -0.001] (CP, L05)
+23. **IDEA-005** mixed int5/int6 port: [-0.003, -0.001] (CP, L07)
+24. **IDEA-006** BigramHash 3072×112: [-0.002, -0.001] (CP, L08)
+25. **IDEA-014** arithmetic-coding loss: [-0.025, -0.010] (WN, L06, partial overlap PR #1385)
+
+### Best val_bpb achieved this session: NONE (no training ran)
+Our benchmark remains the **1.082 BPB submission** from 2026-04-10.
+
+### Next session's first priorities (in order)
+1. **Unblock the pod**. Run `scripts/recreate_h100_100gb.sh` OR manually recreate with `runpodctl create pod --containerDiskSize 100 --volumeSize 50 ...`. Update `POD_HOSTS.env` with new SSH proxy string.
+2. **Fresh get_data.sh** on the recreated pod (should complete in 30-60 min this time).
+3. **Launch IDEA-001** first (drop gated attention, highest hard-evidence single experiment). Seed 42 → if positive, 314+999.
+4. **Run IDEA-002 + 003 + 005 + 006 in batch** (all cheap env-var flip / small-table ports; can serialize 4 experiments in ~1 hour).
+5. **Run IDEA-004** (Pre-Quant AdamW TTT port — biggest known delta, 15 min experiment).
+6. **Run IDEA-011** (embed int8→int6 with re-spend — clean 1-experiment ablation).
+7. Based on results so far, start building IDEA-012 moonshot code (cache + hedge mixer infrastructure). Non-record track first.
+
+### Session takeaway
+
+The protocol-driven research loop worked perfectly **on paper**: 25 cleanly-structured IDEA docs, 14 world-novel, all with falsifiability + prior-art audited, spread across every layer of the stack. The pod-disk blocker prevented any experimental validation, so we have zero empirical movement of val_bpb. Cost of the session was primarily Loop B's status-check overhead on an idle pod.
+
+Lessons for next time:
+1. **Validate pod disk config BEFORE the autonomous session starts.** Run `submission/get_data.sh` smoke-test first; without data, nothing works.
+2. **Loop B needs an escalation path**: after N blocked fires with the same root cause, it should either auto-recreate the pod (with user ack via file sentinel) or stop firing to save cost.
+3. **The doc system scaled beautifully**: 25 ideas, 11-layer coverage, prior-art-audited, ranked by expected BPB. Future sessions with a working pod can immediately start dispatching.
+
+**Pod destroyed**. All artifacts on homelab at `dev:/opt/paramgolf-files/session-2026-04-16/`. All commits pushed to `taka6745/parameter-golf` main.
+
