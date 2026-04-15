@@ -3,7 +3,7 @@ id: IDEA-022
 slug: bayesian-ttt-averaging
 created: 2026-04-16
 updated: 2026-04-16
-status: audited
+status: approved
 layer: L06
 novelty_class: WN
 expected_bpb: [-0.012, -0.003]
