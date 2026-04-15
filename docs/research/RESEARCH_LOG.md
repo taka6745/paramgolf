@@ -3017,3 +3017,8 @@ FlexQ (Aug 2025) does int6 pre-dequant. FireQ (May 2025) does int4 in-matmul. Ou
 
 0/0%/0.
 
+
+## 2026-04-17T00:37Z — Loop B fire 53: still blocked
+
+0/0%/0.
+
