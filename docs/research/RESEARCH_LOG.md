@@ -2833,3 +2833,8 @@ Total IDEAs: 21. Status=draft; audit next fire.
 
 TensorGPT (TT on embeddings, uniform quant) + Tender (TT co-design, activation focus) + HAWQ-V2 (Hessian mixed-precision at layer granularity) all exist separately. Combining **TT decomp + per-core Hessian-guided int4/5 allocation** is not in literature or comp PRs. Promoted draft → audited.
 
+
+## 2026-04-16T21:30Z — Loop B fire 31: still blocked
+
+0/0%/0.
+
