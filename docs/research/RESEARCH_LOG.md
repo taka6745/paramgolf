@@ -2620,3 +2620,12 @@ Time check: we're ~1h into the autonomous session of 7h planned. If user wakes i
 
 0 procs / 0% GPU / 0 shards / newest log 17:01Z fetch_sp8192 error. 6 fires blocked. Pod burn ~$0.90 so far. Recovery script at `scripts/recreate_h100_100gb.sh` ready for user.
 
+
+## 2026-04-16T18:04Z — Loop A fire 5: wrote IDEA-016 (L11 fused megakernel) + IDEA-017 (L10 MAML TTT init)
+
+Both cover previously-empty grid cells in RESEARCH_PROTOCOL §1:
+- IDEA-016: L11 × custom CUDA. Fused transformer block (QKV+attn+out+norm+MLP+residual) in one kernel. Expected [-0.008, -0.002] via +20-40% throughput → 4-8 more training steps. OpenAI-wishlist-aligned (megakernels). Cost 12h, nonrecord POC first.
+- IDEA-017: L10 × meta-learning. MAML outer step during training so 1 TTT epoch at eval = current 3 epochs of quality. Expected [-0.015, -0.005] via cheaper adaptation → more adaptation budget OR larger model. Cost 6h. OpenAI-wishlist-aligned (E2E TTT).
+
+Both status=draft. Next Loop A fires: prior-art audit (decision tree case 2 now applies again since we have 2 drafts). Total IDEAs: 17.
+
