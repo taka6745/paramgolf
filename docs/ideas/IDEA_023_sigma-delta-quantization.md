@@ -3,7 +3,7 @@ id: IDEA-023
 slug: sigma-delta-quantization
 created: 2026-04-16
 updated: 2026-04-16
-status: audited
+status: approved
 layer: L07
 novelty_class: CP
 expected_bpb: [-0.012, -0.002]

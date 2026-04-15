@@ -2931,3 +2931,8 @@ Total IDEAs: 23. Status=draft; audit next fire.
 
 0/0%/0.
 
+
+## 2026-04-16T23:07Z — Loop A fire 25: IDEA-023 audited → approved (CP port)
+
+23 IDEAs total, all approved or in-experiment. L07 has 4 competing ideas (005/011/021 WN/CP + 023 CP port from SDQ-LLM) for reclaim-and-respend slot; will need a bake-off when pod unblocks.
+
