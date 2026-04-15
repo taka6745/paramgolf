@@ -2647,3 +2647,8 @@ Both status=draft. Next Loop A fires: prior-art audit (decision tree case 2 now 
 
 Both frontmatter updated with prior_art_checked=2026-04-16 and full audit sections. Next Loop A fires can promote to approved.
 
+
+## 2026-04-16T18:31Z — Loop B fire 9: still blocked
+
+0/0%/0. ~$1.50 idle burn. Awaiting user on disk-config fix.
+
