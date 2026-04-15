@@ -2953,3 +2953,8 @@ Total IDEAs: 23. Status=draft; audit next fire.
 
 Total IDEAs: 24. Status=draft; audit next fire. L05 covers contrastive pretraining + EMA port + Pre-Quant TTT + Norm-PCT-Dropout now.
 
+
+## 2026-04-16T23:22Z — Loop B fire 45: still blocked
+
+0/0%/0.
+
