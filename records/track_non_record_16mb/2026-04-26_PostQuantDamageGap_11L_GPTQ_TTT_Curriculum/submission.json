@@ -1,7 +1,7 @@
 {
   "track": "non_record_16mb",
   "date": "2026-04-26",
-  "name": "Post-Quantization Damage Gap — 11L GPTQ Int6 + Entropy Curriculum + Sliding TTT (Negative Result)",
+  "name": "Post-Quantization Damage Gap - 11L GPTQ Int6 + Entropy Curriculum + Sliding TTT (Negative Result)",
   "author": "Takoda Mundy",
   "github_id": "taka6745",
   "val_bpb": 2.766343,
@@ -15,7 +15,7 @@
     "1337": 2.796432,
     "2024": 2.774133
   },
-  "metric_label": "post_TTT val_bpb (sliding window stride=64) — 3-seed mean",
+  "metric_label": "post_TTT val_bpb (sliding window stride=64) - 3-seed mean",
   "intermediate_metrics": {
     "pre_quant_val_bpb_mean": 1.100898,
     "pre_quant_val_bpb_std": 0.001133,
@@ -63,5 +63,5 @@
     "eval_wallclock_seconds_per_seed_approx": 380,
     "spend_usd_approx": 60
   },
-  "honest_summary": "Reimplemented an 11-layer GQA transformer with curriculum sampling and a stack of speed levers, reaching pre-quant val_bpb=1.1009 in 600 s on 8xH100 — better than typical pre-quant numbers in the leaderboard reference stack. However, GPTQ int6 quantization catastrophically damages this sharper minimum: post-quant val_bpb=3.4620 (+2.36 BPB damage). Test-time training partially recovers to 2.7663 — still below the 1.2244 naive baseline. Submitted as a non-record research contribution documenting the post-quantization damage gap and proposing progressive depth-grown training as a candidate mitigation."
+  "honest_summary": "Reimplemented an 11-layer GQA transformer with curriculum sampling and a stack of speed levers, reaching pre-quant val_bpb=1.1009 in 600 s on 8xH100 - better than typical pre-quant numbers in the leaderboard reference stack. However, GPTQ int6 quantization catastrophically damages this sharper minimum: post-quant val_bpb=3.4620 (+2.36 BPB damage). Test-time training partially recovers to 2.7663 - still below the 1.2244 naive baseline. Submitted as a non-record research contribution documenting the post-quantization damage gap and proposing progressive depth-grown training as a candidate mitigation."
 }

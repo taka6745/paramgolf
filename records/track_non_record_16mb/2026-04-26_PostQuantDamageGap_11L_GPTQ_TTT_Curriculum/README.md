@@ -10,7 +10,7 @@
 
 ## TL;DR
 
-I trained an 11-layer / 512d GQA transformer with two **novel** training/compression techniques wired in (entropy-bucket curriculum sampler + freeze-dry post-quant filter) plus a **novel adaptation** of NVIDIA's 2:4 sparsity for storage-side compression. In 600 s on 8×H100 the model reaches **pre-quant val_bpb 1.1009** — better than typical pre-quant numbers in the reference 11L stack. Then GPTQ destroys it: **post-quant val_bpb 3.4620** (+2.36 BPB damage). Sliding-window TTT recovers ~0.70 BPB but cannot close the gap; the 3-seed mean ends at 2.7663, well below the naive 1.2244 baseline.
+I trained an 11-layer / 512d GQA transformer with two **novel** training/compression techniques wired in (entropy-bucket curriculum sampler + freeze-dry post-quant filter) plus a **novel adaptation** of NVIDIA's 2:4 sparsity for storage-side compression. In 600 s on 8×H100 the model reaches **pre-quant val_bpb 1.1009** - better than typical pre-quant numbers in the reference 11L stack. Then GPTQ destroys it: **post-quant val_bpb 3.4620** (+2.36 BPB damage). Sliding-window TTT recovers ~0.70 BPB but cannot close the gap; the 3-seed mean ends at 2.7663, well below the naive 1.2244 baseline.
 
 The interesting finding is the **post-quantization damage gap**: pushing pre-quant loss past a threshold produces a sharper minimum that GPTQ int6 cannot accommodate. The gap is +2.36 BPB and is highly reproducible across 3 independent seeds (σ on the post-quant gap = 0.013 BPB).
 
@@ -25,14 +25,14 @@ This PR submits the result as a non-record because (a) it does not beat baseline
 1. [The Headline Finding](#the-headline-finding)
 2. [Architecture & Stack](#architecture--stack)
 3. [Novel Techniques (with graphs)](#novel-techniques-with-graphs)
-   - [§3.1 Entropy-Bucket Curriculum Sampler — NOVEL](#31-entropy-bucket-curriculum-sampler--novel)
-   - [§3.2 Freeze-Dry — NOVEL](#32-freeze-dry--novel)
-   - [§3.3 2:4 Sparsity Packing — NOVEL ADAPTATION](#33-24-sparsity-packing--novel-adaptation)
+   - [§3.1 Entropy-Bucket Curriculum Sampler - NOVEL](#31-entropy-bucket-curriculum-sampler--novel)
+   - [§3.2 Freeze-Dry - NOVEL](#32-freeze-dry--novel)
+   - [§3.3 2:4 Sparsity Packing - NOVEL ADAPTATION](#33-24-sparsity-packing--novel-adaptation)
 4. [Other Techniques (ports + standard)](#other-techniques-ports--standard)
 5. [Speed Levers (8×H100)](#speed-levers-8h100)
 6. [Per-Seed Results](#per-seed-results)
 7. [TTT Recovery Trajectory](#ttt-recovery-trajectory)
-8. [Why Post-Quant Damage Happens — Hypothesis](#why-post-quant-damage-happens--hypothesis)
+8. [Why Post-Quant Damage Happens - Hypothesis](#why-post-quant-damage-happens--hypothesis)
 9. [Negative Results](#negative-results)
 10. [Proposed Mitigation: Progressive Depth-Grown Training](#proposed-mitigation-progressive-depth-grown-training)
 11. [Reproducing](#reproducing)
@@ -42,19 +42,19 @@ This PR submits the result as a non-record because (a) it does not beat baseline
 
 ## The Headline Finding
 
-Three independent training runs with different seeds. All three reach the same regime — and the same gap.
+Three independent training runs with different seeds. All three reach the same regime - and the same gap.
 
 ![Per-seed post-quant vs post-TTT bars](figures/fig4_per_seed_bars.png)
 
 | Stage | val_bpb (mean) | σ | Δ vs prior |
 |---|---:|---:|---:|
-| pre-quant post-EMA  | **1.1009** | 0.0011 | — |
+| pre-quant post-EMA  | **1.1009** | 0.0011 | - |
 | post-quant pre-TTT  | **3.4620** | 0.0173 | **+2.3611** ← the gap |
 | post-TTT (sliding)  | **2.7663** | 0.0346 | −0.6957 (TTT recovers) |
 
 The gap of +2.36 BPB is roughly two orders of magnitude larger than what existing leaderboard records report (most quantization-aware schemes show ≤0.05 BPB gap). It is also highly reproducible across seeds (σ on the gap = 0.018 BPB; paired t ≈ 131; p < 0.001).
 
-The pre-quant value 1.1009 is interesting on its own: in 600 s of training the model already enters a regime that — if it survived quantization — would be competitive with the late-March leaderboard. The whole question becomes: *why doesn't this minimum survive int6?*
+The pre-quant value 1.1009 is interesting on its own: in 600 s of training the model already enters a regime that - if it survived quantization - would be competitive with the late-March leaderboard. The whole question becomes: *why doesn't this minimum survive int6?*
 
 ---
 
@@ -95,10 +95,10 @@ input ids (B × 2048)
 
 Public-PR ancestry of the architecture (in order of inclusion):
 
-- **PR #287** — Partial RoPE (16/64 dims) + LN scale + EMA + XSA on last 4 layers
-- **PR #549** — LeakyReLU(0.5)² activation, parallel Muon, score-first sliding-window TTT
-- **PR #1019** — Self-generated GPTQ calibration data, all-layer XSA
-- **PR #1148** — 11L Muon TTT + entropy-adaptive epochs
+- **PR #287** - Partial RoPE (16/64 dims) + LN scale + EMA + XSA on last 4 layers
+- **PR #549** - LeakyReLU(0.5)² activation, parallel Muon, score-first sliding-window TTT
+- **PR #1019** - Self-generated GPTQ calibration data, all-layer XSA
+- **PR #1148** - 11L Muon TTT + entropy-adaptive epochs
 
 Plus the techniques in [§3](#novel-techniques-with-graphs) (novel) and [§4](#other-techniques-ports--standard) (ports + standard), each gated by an env variable so we can A/B individual contributors.
 
@@ -110,13 +110,13 @@ Optimizer: Muon (Newton-Schulz orthogonalization, 3 iterations) for matrix param
 
 The next three sections describe the novel contributions of this submission. Each section starts with a tag indicating origin, followed by hypothesis, algorithm, why-novel, and code excerpt.
 
-### §3.1 Entropy-Bucket Curriculum Sampler — NOVEL
+### §3.1 Entropy-Bucket Curriculum Sampler - NOVEL
 
 **Tag:** Novel to this submission. Not present in any open or merged competition PR I'm aware of. Ships with the submission as `idea_curriculum_shard.py` inlined into `train_gpt.py`.
 
 **Hypothesis.** Random shard-shuffling treats every token equally, but FineWeb has a wide entropy distribution. A model that sees easy tokens early and hard tokens late might find a flatter minimum than one that sees random batches throughout. Easy → hard ordering also matches the implicit assumption Muon and AdamW make about loss-landscape stationarity: early in training, the gradient distribution is wide and orthogonalization is high-noise; late in training, the gradient distribution is concentrated and the optimizer can take aggressive steps. Feeding hardest tokens late aligns the data difficulty with the optimizer's capability.
 
-**Algorithm.** Two phases — offline preparation, online sampling.
+**Algorithm.** Two phases - offline preparation, online sampling.
 
 *Offline (one-time).*
 1. Run a small pilot model over every shard, recording per-document NLL.
@@ -138,12 +138,12 @@ The schedule is driven by **wallclock progress**, not step count, because step r
 
 ![Entropy-bucket curriculum schedule](figures/fig3_curriculum_schedule.png)
 
-The left panel shows the raw (un-normalized) bucket weight as a function of training progress, for 8 buckets and floor = 0.02. At p=0 the easiest bucket has weight 1.0 and the hardest has weight 0.02 (clamped to floor); at p=1 the situation is reversed. The right panel shows the actual sampling probability after normalization — visible as a color gradient from "easy-dominated" at p=0 to "hard-dominated" at p=1.
+The left panel shows the raw (un-normalized) bucket weight as a function of training progress, for 8 buckets and floor = 0.02. At p=0 the easiest bucket has weight 1.0 and the hardest has weight 0.02 (clamped to floor); at p=1 the situation is reversed. The right panel shows the actual sampling probability after normalization - visible as a color gradient from "easy-dominated" at p=0 to "hard-dominated" at p=1.
 
 **Why novel.**
 
 1. **Wallclock-driven progress fraction**, not step-driven. Most curriculum-learning literature schedules on epochs or steps. In a fixed-wallclock setting like Parameter Golf, step rate is non-stationary across phases (compile cold-start, warmup, warmdown, kernel cache effects), so step-driven schedules under- or over-shoot. Wallclock-driven schedules guarantee the crossfade lands at exactly the wallclock budget.
-2. **Floor weight prevents catastrophic forgetting of either tail.** A pure linear crossfade goes to zero at the endpoints — at p=0 the model never sees hard tokens; at p=1 it never sees easy ones. Both are bad: easy tokens contain syntactic regularities the model needs throughout; hard tokens contain rare-pattern signal that builds slowly. The floor (we use 0.02) keeps every bucket alive throughout training.
+2. **Floor weight prevents catastrophic forgetting of either tail.** A pure linear crossfade goes to zero at the endpoints - at p=0 the model never sees hard tokens; at p=1 it never sees easy ones. Both are bad: easy tokens contain syntactic regularities the model needs throughout; hard tokens contain rare-pattern signal that builds slowly. The floor (we use 0.02) keeps every bucket alive throughout training.
 3. **Pre-bucketed sampling, no per-step entropy compute.** Existing entropy-curriculum schemes I've seen (e.g., Self-Paced Learning) compute per-batch entropy at training time, which adds non-trivial CPU/GPU overhead. We pay the entropy cost once offline; the online sampler is a single weighted-categorical draw + one offset lookup.
 
 **Code excerpt** (from `idea_curriculum_shard.py`, inlined into `train_gpt.py`):
@@ -172,11 +172,11 @@ class CurriculumSequenceLoader:
 
 ---
 
-### §3.2 Freeze-Dry — NOVEL
+### §3.2 Freeze-Dry - NOVEL
 
 **Tag:** Novel to this submission. Not in any open or merged competition PR. Ships with the submission as `idea_051_freeze_dry.py` inlined into `train_gpt.py`. Mechanically simple but, to my knowledge, not previously applied to LLM weight compression in a parameter-constrained setting.
 
-**Hypothesis.** Inside a trained weight matrix, many elements are well-predicted by their immediate neighbors via a small linear model. If we can mark which elements are reconstructable and recover them at decompression time from their neighbors plus a small set of coefficients, we save the bits used to store those values. This is *not* low-rank approximation — we exploit *local* linear structure (per-column neighbor predictability), which is much cheaper to detect and applies even to matrices that are full-rank globally.
+**Hypothesis.** Inside a trained weight matrix, many elements are well-predicted by their immediate neighbors via a small linear model. If we can mark which elements are reconstructable and recover them at decompression time from their neighbors plus a small set of coefficients, we save the bits used to store those values. This is *not* low-rank approximation - we exploit *local* linear structure (per-column neighbor predictability), which is much cheaper to detect and applies even to matrices that are full-rank globally.
 
 **Algorithm.**
 
@@ -209,7 +209,7 @@ Decompression-side reconstruction:
       # Reconstruction is exact-for-mask, lossy-for-dropped (within rmse_thresh).
 ```
 
-The figure below shows the per-element residual histogram on a synthetic weight matrix where 18% of columns were *constructed* to be linearly-reconstructable from neighbors. The distribution shows a clear bimodal structure — the reconstructable columns sit in the tight near-zero spike, the rest of the matrix has a broad heavy-tailed distribution. Setting the threshold at 0.005 captures essentially all of the truly-reconstructable elements without false-positives:
+The figure below shows the per-element residual histogram on a synthetic weight matrix where 18% of columns were *constructed* to be linearly-reconstructable from neighbors. The distribution shows a clear bimodal structure - the reconstructable columns sit in the tight near-zero spike, the rest of the matrix has a broad heavy-tailed distribution. Setting the threshold at 0.005 captures essentially all of the truly-reconstructable elements without false-positives:
 
 ![Freeze-dry reconstruction error histogram](figures/fig5_freezedry_histogram.png)
 
@@ -243,11 +243,11 @@ def analyze_linear_redundancy(w: np.ndarray, rmse_thresh: float = 0.005):
 
 ---
 
-### §3.3 2:4 Sparsity Packing — NOVEL ADAPTATION
+### §3.3 2:4 Sparsity Packing - NOVEL ADAPTATION
 
-**Tag:** Novel adaptation. The 2:4 sparsity *structure* is from NVIDIA's hardware-sparse tensor format (Ampere / Hopper). Our **packing format** — 3-bit values + 4-bit position-pair codes — is custom and built specifically for the compress-once / decompress-once / never-actually-run-sparse use case in Parameter Golf, where the structure exists only on disk. Ships as `idea_phase6_sparsity_24.py`.
+**Tag:** Novel adaptation. The 2:4 sparsity *structure* is from NVIDIA's hardware-sparse tensor format (Ampere / Hopper). Our **packing format** - 3-bit values + 4-bit position-pair codes - is custom and built specifically for the compress-once / decompress-once / never-actually-run-sparse use case in Parameter Golf, where the structure exists only on disk. Ships as `idea_phase6_sparsity_24.py`.
 
-**Hypothesis.** Most weight matrices have a "long tail" of values that are below the noise floor of the network. We can drop ~50% of values per 4-element block and store *which two we kept* as a 2-bit-equivalent position code, plus the kept values at lower precision than the int6 baseline. The standard NVIDIA format stores values at fp16 — too wasteful here. We push values to 3 bits per row-scaled value and pair indices to 4 bits, achieving ~58% raw bit savings vs int6 on dense storage.
+**Hypothesis.** Most weight matrices have a "long tail" of values that are below the noise floor of the network. We can drop ~50% of values per 4-element block and store *which two we kept* as a 2-bit-equivalent position code, plus the kept values at lower precision than the int6 baseline. The standard NVIDIA format stores values at fp16 - too wasteful here. We push values to 3 bits per row-scaled value and pair indices to 4 bits, achieving ~58% raw bit savings vs int6 on dense storage.
 
 **Algorithm.**
 
@@ -274,7 +274,7 @@ Storage per 4 weights:
 
 **Why novel.**
 
-1. **Asymmetric value vs position bit budget.** NVIDIA's 2:4 format always stores values at fp16, because hardware needs the original precision for compute. We're not running sparse compute — the weights are densified at load time — so we can compress values aggressively. 3 bits per value (8 levels per row) was chosen because at 2 bits the per-row quantization error explodes; at 4 bits the storage saving disappears. 3 is the sweet spot we measured.
+1. **Asymmetric value vs position bit budget.** NVIDIA's 2:4 format always stores values at fp16, because hardware needs the original precision for compute. We're not running sparse compute - the weights are densified at load time - so we can compress values aggressively. 3 bits per value (8 levels per row) was chosen because at 2 bits the per-row quantization error explodes; at 4 bits the storage saving disappears. 3 is the sweet spot we measured.
 2. **4-bit position code instead of 2-bit ones-hot.** A naïve encoding would use 4 bits as a one-hot vector indicating which two of four positions survived. Our encoding is denser: there are exactly C(4,2) = 6 valid (i, j) pairs, so 3 bits would actually fit, but the 6→8 padding makes byte-aligned packing trivial and zstd handles the rest. Trading 1 bit for ~2× simpler decompression code is the right call when the dense int6 baseline already compresses well.
 3. **Storage-only, not compute.** Most 2:4 work is hardware-aware (run sparse-tensor-cores). Ours is *load-time densify*, so we don't need NVIDIA's contiguous-block layout, the position codes can be any of the 6 pairs (not just hardware-friendly ones), and we can pad row dimensions arbitrarily.
 
@@ -315,7 +315,7 @@ def quantize_sparsity_24(W: np.ndarray, value_bits: int = 3) -> dict:
 
 ## Other Techniques (ports + standard)
 
-These are the rest of the stack — well-known techniques we ship but did not invent. Listed for completeness.
+These are the rest of the stack - well-known techniques we ship but did not invent. Listed for completeness.
 
 | Technique | Origin | What it does |
 |---|---|---|
@@ -359,8 +359,8 @@ These collectively yielded ~5365 training steps in 600 s for our config.
 | Quantization damage Δbpb | +2.374   | +2.340   | +2.369   | +2.361 | 0.018 |
 | TTT recovery −Δbpb       | −0.746   | −0.646   | −0.695   | −0.696 | 0.050 |
 | Artifact (bytes)         | 15,720,987 | 15,652,160 | 15,715,938 | **15,696,362** | 38,324 |
-| Total bytes (code+art)   | 15,872,435 | 15,803,608 | 15,867,386 | 15,847,810 | — |
-| Cap headroom             | 127,565 | 196,392 | 132,614 | 152,190 | — |
+| Total bytes (code+art)   | 15,872,435 | 15,803,608 | 15,867,386 | 15,847,810 | - |
+| Cap headroom             | 127,565 | 196,392 | 132,614 | 152,190 | - |
 
 t-statistic for the post-quant gap (pre vs. post mean, paired): `t ≈ 2.36 / 0.018 ≈ 131`, `p < 0.001`. The gap is real, not noise.
 
@@ -370,7 +370,7 @@ Artifact size sits comfortably under the 16,000,000 byte cap on every seed.
 
 ## TTT Recovery Trajectory
 
-The 1238-chunk sliding-window TTT trajectory is monotone-decreasing across all three seeds — TTT is well-behaved, it just runs out of recovery before catching baseline.
+The 1238-chunk sliding-window TTT trajectory is monotone-decreasing across all three seeds - TTT is well-behaved, it just runs out of recovery before catching baseline.
 
 ![TTT recovery trajectory per seed](figures/fig2_ttt_recovery.png)
 
@@ -379,21 +379,21 @@ Notice that all three seeds:
 - Start at ~3.40-3.50 BPB (post-quant pre-TTT level), peak near the very first chunks (TTT hasn't yet adapted), then descend.
 - Cross under 3.0 BPB around chunk 200.
 - Land in 2.73-2.80 BPB range by chunk 1238.
-- Are still slowly descending at the end — more validation tokens would extend the recovery further, but we run out of val data.
+- Are still slowly descending at the end - more validation tokens would extend the recovery further, but we run out of val data.
 
 The recovery is consistent in shape across seeds: same peak location, same slope, same asymptotic floor. This is consistent with TTT acting on the *common* part of the post-quant damage (which is structural to the GPTQ pipeline) rather than per-seed noise.
 
 ---
 
-## Why Post-Quant Damage Happens — Hypothesis
+## Why Post-Quant Damage Happens - Hypothesis
 
 I don't have a definitive answer; what follows is the working model after looking at the per-layer pre/post-quant divergence in the seed 42 trace.
 
-**Hypothesis 1 — Sharper minimum from longer/curriculum training.** 5365 training steps + curriculum + DualMLP + asymmetric skip init may produce a flatter loss surface in *parameter* space but a sharper *function* surface — i.e., the model places weights into regions where small per-row perturbations (which is what GPTQ int6 effectively introduces) cause large output changes. Pre-quant 1.10 is not "just better training," it's training that has driven the weight distribution into a region GPTQ struggles with.
+**Hypothesis 1 - Sharper minimum from longer/curriculum training.** 5365 training steps + curriculum + DualMLP + asymmetric skip init may produce a flatter loss surface in *parameter* space but a sharper *function* surface - i.e., the model places weights into regions where small per-row perturbations (which is what GPTQ int6 effectively introduces) cause large output changes. Pre-quant 1.10 is not "just better training," it's training that has driven the weight distribution into a region GPTQ struggles with.
 
-**Hypothesis 2 — DualMLP independence amplifies quantization noise.** DualMLP averages two independent half-width MLPs. After GPTQ, the two paths' quantization errors are *uncorrelated*. The averaging step expects coherent paths; uncorrelated noise in two paths effectively becomes √2× the per-path noise.
+**Hypothesis 2 - DualMLP independence amplifies quantization noise.** DualMLP averages two independent half-width MLPs. After GPTQ, the two paths' quantization errors are *uncorrelated*. The averaging step expects coherent paths; uncorrelated noise in two paths effectively becomes √2× the per-path noise.
 
-**Hypothesis 3 — XSA layers' larger weight matrices have higher per-row noise.** XSA on the last 4 layers introduces additional projection matrices. These get the same int6 treatment but their row-scale is wider, meaning the per-row quantization step size is larger.
+**Hypothesis 3 - XSA layers' larger weight matrices have higher per-row noise.** XSA on the last 4 layers introduces additional projection matrices. These get the same int6 treatment but their row-scale is wider, meaning the per-row quantization step size is larger.
 
 **Predicted experiment.** Disable DualMLP (`USE_DUAL_MLP=0`) and re-run. If the gap shrinks to ~0.5 BPB or less, hypothesis 2 is supported. If it stays ~2.0 BPB, hypotheses 1 or 3 dominate.
 
@@ -405,7 +405,7 @@ We didn't run this ablation because we'd already exhausted our compute budget. T
 
 Things that didn't help, with specific numbers where we have them:
 
-1. **Flatten + dead-code-removal patches.** Three iterations of training-config patches (patch-1: disable curriculum; patch-2: match the reference 11L hparams exactly; patch-3: pre-quant AdamW TTT for 6 epochs) all showed pre-quant improvements (1.10 → 1.097) but the post-quant gap stayed at +2.3 BPB regardless. *The sharper-minimum hypothesis is consistent with this — every patch made training "better" but quantization tolerance proportionally worse.*
+1. **Flatten + dead-code-removal patches.** Three iterations of training-config patches (patch-1: disable curriculum; patch-2: match the reference 11L hparams exactly; patch-3: pre-quant AdamW TTT for 6 epochs) all showed pre-quant improvements (1.10 → 1.097) but the post-quant gap stayed at +2.3 BPB regardless. *The sharper-minimum hypothesis is consistent with this - every patch made training "better" but quantization tolerance proportionally worse.*
 2. **GPTQ value-dedup post-snap (`USE_CMP_QUANT_VALUE_DEDUP=1`).** Did not detectably move the gap.
 3. **Single-seed pre-quant gating in our orchestrator.** We added a "skip full eval if pre_quant > 1.2" gate so single-seed iterations could die fast. None of our patches ever produced pre_quant > 1.2; the gate never fired. (Useful infrastructure note for anyone running a similar iteration loop: the early-exit threshold needs to be calibrated to the actual pre-quant landing value, not a global rule of thumb.)
 4. **Initial reimplementation from scratch (before flatten).** Our first attempt was a from-scratch reimplementation of the reference 11L config. It mismatched the reference quantization pipeline by ~0.1 BPB and over-shot the 16 MB cap by 2 MB. Abandoned in favor of flattening the actual reference module tree.
@@ -415,7 +415,7 @@ Things that didn't help, with specific numbers where we have them:
 
 ## Proposed Mitigation: Progressive Depth-Grown Training
 
-Code is implemented and CPU-smoke-tested in our fork's `submission/progressive/` tree (not shipped in this PR's records folder because it has not yet run on H100 — the records-folder invariant is "this script ran and produced these numbers"). Outline:
+Code is implemented and CPU-smoke-tested in our fork's `submission/progressive/` tree (not shipped in this PR's records folder because it has not yet run on H100 - the records-folder invariant is "this script ran and produced these numbers"). Outline:
 
 **Idea.** A 3-layer model trains ~6× faster per step than an 11-layer one. If we spend the first 20% of the wallclock at depth 3, then 30% at depth 6, then 50% at depth 11, we may get more useful gradient updates than spending the whole 600 s at depth 11. New layers are inserted with **identity-initialization** (zero output projections) so each transition is mathematically a no-op at the moment of growth.
 
@@ -445,7 +445,7 @@ Wallclock budget (600 s total)
 - Stage-3 model has exactly 35,988,657 parameters (matches the architecture spec).
 - ruff check + ruff format clean.
 
-**Why it might close the post-quant damage gap.** A model trained progressively has fewer raw gradient updates at full depth. The shallower stages leave the deeper layers in a less-aggressive regime — closer to identity at init — and the final 300 s of full-depth training has less wallclock to produce the kind of sharp minimum that breaks under int6. The hypothesis is not "we'll get lower pre-quant val_bpb"; it's "we'll get a *softer* minimum at the same val_bpb, which survives quantization."
+**Why it might close the post-quant damage gap.** A model trained progressively has fewer raw gradient updates at full depth. The shallower stages leave the deeper layers in a less-aggressive regime - closer to identity at init - and the final 300 s of full-depth training has less wallclock to produce the kind of sharp minimum that breaks under int6. The hypothesis is not "we'll get lower pre-quant val_bpb"; it's "we'll get a *softer* minimum at the same val_bpb, which survives quantization."
 
 ---
 
@@ -456,7 +456,7 @@ Inside this records folder:
 ```bash
 cd records/track_non_record_16mb/2026-04-26_PostQuantDamageGap_11L_GPTQ_TTT_Curriculum
 
-# Setup (run from repo root for data download — see README.md "Getting Started"):
+# Setup (run from repo root for data download - see README.md "Getting Started"):
 python3 data/cached_challenge_fineweb.py --variant sp8192
 
 # Run on 8×H100:
@@ -483,14 +483,14 @@ For seeds 1337 and 2024, swap `SEED=…` and re-run. Each run takes ~1000 s wall
 
 ## Acknowledgments
 
-- **PR #287 / #549 / #1019 / #1148 authors** (*jfprincz, abaybektursun, signalrush*) — this is their architecture stack, reimplemented and re-traced. The novelty in this PR is in the curriculum + freeze-dry + sparsity-packing layer; the model itself is theirs.
-- **Frantar et al. (2023)** — GPTQ. Without the Hessian-aware quantization backbone we'd be much further from baseline.
-- **NVIDIA TMA / Hopper team** — TMA matmul integration lifted ~10% of compute throughput for free on H100.
-- **OpenAI / Will DePue** — for running the challenge and explicitly inviting research-quality negative results in the non-record track.
+- **PR #287 / #549 / #1019 / #1148 authors** (*jfprincz, abaybektursun, signalrush*) - this is their architecture stack, reimplemented and re-traced. The novelty in this PR is in the curriculum + freeze-dry + sparsity-packing layer; the model itself is theirs.
+- **Frantar et al. (2023)** - GPTQ. Without the Hessian-aware quantization backbone we'd be much further from baseline.
+- **NVIDIA TMA / Hopper team** - TMA matmul integration lifted ~10% of compute throughput for free on H100.
+- **OpenAI / Will DePue** - for running the challenge and explicitly inviting research-quality negative results in the non-record track.
 - **The Parameter Golf community** for ~700 PRs of open work that gave us a stack to start from.
 
 ---
 
-## Footnote — On Honesty
+## Footnote
 
-The 3-seed mean of 2.7663 is below the 1.2244 naive baseline. This submission is not competitive on the leaderboard. I'm submitting it because the post-quantization damage gap is reproducible, the diagnosis is interesting, and the novel techniques (entropy-bucket curriculum, freeze-dry, 2:4 sparsity packing) are documented in enough detail that other competitors can pick them up and try them on a stack that doesn't hit the gap. If the reviewers think this isn't a sufficient contribution for the non-record track, please let me know — I'll close the PR and only re-open after I can post the progressive-training H100 result.
+The 3-seed mean of 2.7663 is below the 1.2244 naive baseline. This submission is not competitive on the leaderboard. I'm submitting it because the post-quantization damage gap is reproducible, the diagnosis is interesting, and the novel techniques (entropy-bucket curriculum, freeze-dry, 2:4 sparsity packing) are documented in enough detail that other competitors can pick them up and try them on a stack that doesn't hit the gap. If the reviewers think this isn't a sufficient contribution for the non-record track, please let me know - I'll close the PR and only re-open after I can post the progressive-training H100 result.
