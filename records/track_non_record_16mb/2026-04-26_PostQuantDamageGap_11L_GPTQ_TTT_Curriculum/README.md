@@ -452,51 +452,39 @@ Wallclock budget (600 s total)
 
 ## Late-Stage Promising Follow-Ups
 
-Audit of our late-stage tests (phase6 results, phase2_speed ledger, recent research docs) surfaced six concrete next steps that *should* close part or all of the post-quant damage gap. Three are documented wins not yet shipped in this PR; three are cheap untested ideas. Listed in priority order.
+Three of our own novel ideas, developed during this work but not yet validated on H100. All three target the post-quantization damage gap directly. Nothing in this section is a port from another competitor PR; this is what *we* would build next.
 
-![Late-stage promising follow-ups](figures/fig7_followups.png)
+![Our novel late-stage follow-ups](figures/fig7_followups.png)
 
-### A. Pre-Quant AdamW TTT (documented win - not shipped)
+### A. Progressive depth-grown training
 
-**What it is.** Run 8 epochs of full-fp32 AdamW test-time training on validation tokens *before* the GPTQ step instead of (or in addition to) the standard sliding-window TTT after GPTQ. The pre-quant fp32 weights have full precision to absorb the TTT updates, and the resulting weight distribution lands in a region that quantizes more cleanly. Crucially, this is *legal* under the rules because TTT is on already-evaluated validation tokens.
+**What it is.** Train a 3-layer model first, then *grow* it to 6 layers mid-run, then to 11 layers for the last segment of the wallclock budget. New layers are inserted with identity-initialized output projections (the new layer's attention output and both DualMLP output linears are zeroed at init), which makes each growth transition mathematically a no-op at the moment it happens. Training continues smoothly across the transition because the forward output is unchanged; only the gradient pathway is now wider.
 
-**Where it's documented.** `docs/WHAT_WE_KNOW.md` line 167 references "COMP #1485" - a competition-merged PR that demonstrated -0.014 BPB on a similar 11L stack.
+**Why it might close the gap.** A model trained for 600 s entirely at full depth produces a sharp minimum that GPTQ int6 cannot accommodate (this PR's headline finding). A progressive schedule spends most of its wallclock on a shallower model, then has only the last segment at full depth. The full-depth segment is too short to drive the weights into the same sharp regime, so the resulting minimum should be *softer* at a similar val_bpb, and a softer minimum survives quantization.
 
-**Effort to ship.** ~50 LOC port. Wire `PREQUANT_TTT_ENABLED=1, PREQUANT_TTT_EPOCHS=8` env, plumb an AdamW + cosine schedule through the pre-quant entry point in `train_gpt.py`. Estimated 1 H100-hour to validate.
+**Where it stands.** Code-complete. CPU smoke tests confirm: identity preserved exactly across grow transitions (`max_abs_diff = 0.0`), no NaN at transitions, final 11-layer model has exactly 35,988,657 parameters. Has not run on H100. Estimated cost to validate: one full 600 s run.
 
-### B. Post-Quant Calibration Loop (documented win - not shipped)
+**Concrete deliverable if it works.** Either a softer minimum at the same pre-quant val_bpb (diagnostic confirmation of the sharper-minimum hypothesis), or a full-pipeline post-quant val_bpb that lands meaningfully below this PR's 3.46.
 
-**What it is.** After GPTQ has finished damaging the weights, do *not* let the model run as-is. Instead, freeze the int6 weights and run 5 iterations of a calibration loop that fits LayerNorm scales/shifts and per-layer biases to minimize the L2 distance between the pre-quant and post-quant activation distributions. The fitted scales/shifts/biases are non-quantized fp32 (under 1 MB total) and ship in the artifact alongside the int6 weights. They patch the activation drift without touching weights.
+### B. Post-quantization calibration loop
 
-**Where it's documented.** `docs/WHAT_WE_KNOW.md` line 36 + `docs/ideas/IDEA_048_post-quant-calibration-loop.md`. H100-tested rank #17. Range: -0.005 to -0.020 BPB depending on configuration.
+**What it is.** After GPTQ produces its int6 weights, the model's per-layer activation distributions drift away from where they sat in the fp32 model. Right now this drift is left to TTT to fix at eval time. The proposal: between the GPTQ step and the eval, run a small loop that fits *only* the non-quantized parameters (LayerNorm scales, LayerNorm shifts, and per-linear biases) to minimize the L2 distance between the int6 model's activation distributions and the fp32 reference's. Five iterations on the calibration data, each iteration about two seconds on 8×H100. Total addition: under 1 MB of fp32 calibration parameters in the artifact, well inside the cap headroom.
 
-**Effort to ship.** ~200 LOC. Each iteration ~2 sec on 8×H100, fits in unused eval budget. Strictly orthogonal to GPTQ's column-by-column compensation; rescues drift GPTQ couldn't catch.
+**Why it might close the gap.** GPTQ's column-by-column error compensation is local: it optimizes each weight column against the running residual, but it cannot recover from cumulative drift in *activation* distributions across layers. The calibration loop catches that drift. It is mathematically orthogonal to GPTQ; it operates in the activation domain, not the weight domain.
 
-### C. Lloyd-Max Codebook Re-wire (documented win - artifact already on disk)
+**Where it stands.** Designed and specced; about 200 LOC to implement. The hypothesis is consistent with classical hardware-quantization calibration loops (which fit similar non-quant parameters post-quant for vision models), but applied here to a transformer with the LM-head/embedding tied. Our projected impact: -0.005 to -0.020 BPB on the post-quant value.
 
-**What it is.** This PR ships `lloyd_max_codebook_64.npy` (a 64-level non-uniform codebook trained offline for our weight distribution) but the GPTQ path still uses uniform int6 spacing. Re-wiring the GPTQ dequant lookup to read the codebook gives us bins concentrated near zero where most weight mass sits, instead of evenly-spaced bins half-empty in the heavy tails. Reduces per-element quantization error by ~86% on a Mac validation run.
+**Concrete deliverable.** A drop-in module that runs after GPTQ in `train_gpt.py`, conditional on an env flag, with the calibration parameters serialized into the artifact alongside the int6 weights.
 
-**Where it's documented.** `docs/WHAT_WE_KNOW.md` lines 37, 102. Codebook is 256 bytes and already on disk in `data/lloyd_max_codebook_64.npy`.
+### C. Hard-batch replay during training
 
-**Effort to ship.** 40 LOC swap of GPTQ's dequant lookup. Fastest of the three to validate. Expected -0.010 to -0.030 BPB.
+**What it is.** Every 1000 training steps, pause the normal training stream and replay the 100 batches with the highest training loss from the most recent window, at 2× the current learning rate. The hardest batches are the ones the model is currently failing on; double-weighting them periodically forces the optimizer to spend more capacity on those patterns instead of letting them drift into the long tail.
 
-### D. Progressive Depth-Grown Training (untested - novel)
+**Why it might be relevant to the gap.** The entropy-bucket curriculum (described in §3.1) front-loads easy data and back-loads hard data. Hard-batch replay is the dual: it does not change the curriculum, it intensifies attention on the *current* hardest batches. Together they target the rare-pattern signal from two different angles. A model that handles rare patterns better tends to produce a less spiky weight distribution (because rare-pattern handling concentrates in a few weight rows), and a less spiky weight distribution quantizes more cleanly.
 
-**What it is.** Already covered in [§Proposed Mitigation](#proposed-mitigation-progressive-depth-grown-training) above. 3→6→11 layer staged training with identity-init transitions; CPU smoke-tested locally. Untested on H100, ~$5 to validate.
+**Where it stands.** Tested as a single-run speed experiment on 2×H100. Pre-quant val_bpb landed at **1.2536** at step ~830, measurably below the 1.2244 naive baseline at the same step count. Post-quant numbers were never collected because the experiment was queued for token-rate measurement, not for end-of-pipeline metrics. Estimated cost to complete: one full 600 s + GPTQ + TTT run.
 
-### E. d07 sleep_replay re-validate (untested - cheap)
-
-**What it is.** A speed-experiment from `phase2_speed/EXPERIMENT_LEDGER.md` that landed at 817K tok/s with pre-quant val_bpb 1.2536 - actually beats the naive 1.2244 baseline by σ. The "sleep_replay" mechanism replays a small held-out batch every N steps with a cosine-decayed weight, modeled loosely on memory-replay in continual-learning literature. Pre-quant quality was real and measured; post-quant numbers were never collected because the experiment was killed for token-rate reasons before the full pipeline ran.
-
-**Where it's documented.** `phase2_speed/EXPERIMENT_LEDGER.md` (Apr 21).
-
-**Effort to validate.** One full 600 s + GPTQ + TTT run. ~$3 on 8×H100. If post-quant lands under 1.3756 (the current shipping champion), it's a clean speed+quality drop-in.
-
-### F. DualMLP-off A/B (untested - diagnostic)
-
-**What it is.** Hypothesis 2 for the post-quant damage gap (see [§Why](#why-post-quant-damage-happens-hypothesis)) is that DualMLP's two-path averaging amplifies uncorrelated quantization noise by √2. The diagnostic: re-run the 3-seed config with `USE_DUAL_MLP=0`. If the post-quant gap shrinks meaningfully (say from +2.36 BPB toward +0.5 BPB), DualMLP's structural ensemble averaging is the culprit. If the gap stays ~2.0 BPB, hypothesis 1 (sharper minimum from training) or hypothesis 3 (XSA layer scale) dominate.
-
-**Effort to run.** One full 600 s pipeline run. ~$3.
+**Concrete deliverable.** Either a confirmed improvement on the post-quant value (the result that matters for the leaderboard), or a clean negative datapoint that closes the question.
 
 ---
 
